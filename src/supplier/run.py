@@ -2,6 +2,7 @@ import sys
 import json
 import logging
 import os
+import time
 from mqtt.mqtt_wrapper import MQTTWrapper
 
 # Logging-Konfiguration
@@ -51,6 +52,8 @@ def on_message_tick(client, userdata, msg):
     """
     Callback für Tick-Nachrichten. Sendet Anfragen an Roboter, wenn Pakete verfügbar sind.
     """
+    global supplier_package_type_1, supplier_package_type_2
+
     ts_iso = msg.payload.decode("utf-8")
     logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
@@ -74,6 +77,7 @@ def on_message_tick(client, userdata, msg):
     }
     client.publish(DATA_TOPIC, json.dumps(data))
     logger.info(f"Bestand veröffentlicht (vor Verarbeitung): {data}")
+
 
 
 def on_package_processed(client, userdata, msg):
@@ -107,19 +111,26 @@ def main():
     Main function to initialize the MQTT client and start the event loop.
     """
     logger.info(f"Initializing MQTT client with name: {NAME}")
-    logger.info(f"Subscribing to tick topic: {TICK_TOPIC}")
-    logger.info(f"Publishing storage data to topic: {DATA_TOPIC}")
 
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
 
     # Subscriptions
     mqtt.subscribe(ROBOTER_1_PROCESS_TOPIC)
+    logger.info(f"Subscribing to tick topic: {ROBOTER_1_PROCESS_TOPIC}")
+
     mqtt.subscribe(ROBOTER_2_PROCESS_TOPIC)
+    logger.info(f"Subscribing to tick topic: {ROBOTER_2_PROCESS_TOPIC}")
+
     mqtt.subscribe(TICK_TOPIC)
+    logger.info(f"Subscribing to tick topic: {TICK_TOPIC}")
 
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
+
+
     mqtt.subscribe_with_callback(ROBOTER_1_PROCESS_TOPIC, on_package_processed)
+
     mqtt.subscribe_with_callback(ROBOTER_2_PROCESS_TOPIC, on_package_processed)
+
 
     try:
         logger.info("Starting MQTT loop...")

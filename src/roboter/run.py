@@ -27,6 +27,7 @@ SUPPLIER_TYPE_2_REQUEST_TOPIC = 'roboter/2/request'
 
 PROCESSED_TYPE_1_TOPIC = 'roboter/1/processed'
 PROCESSED_TYPE_2_TOPIC = 'roboter/2/processed'
+PROCESSED_TYPE_3_TOPIC = 'roboter/3/processed'
 
 # Variables
 roboter_status = os.environ.get('ROBOTER_STATUS')
@@ -49,8 +50,8 @@ def process_package(client, package_type):
         if package_type == 1 and NAME == "roboter_1" or NAME == "roboter_2":
             logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
             set_status(client, "running")
-            time.sleep(5)  # Simuliere Verarbeitung
-            logger.info(f"geschlafen fuer 3 Sekunden")
+            time.sleep(4)  # Simuliere Verarbeitung
+            logger.info(f"geschlafen fuer 4 Sekunden")
             logger.info(f"Paket Typ {package_type} verarbeitet.")
             # Sende Bestätigung
             client.publish(PROCESSED_TYPE_1_TOPIC, json.dumps({"package_type": package_type}))
@@ -59,11 +60,21 @@ def process_package(client, package_type):
         if package_type == 2 and NAME == "roboter_1" or NAME == "roboter_2":
             logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
             set_status(client, "running")
-            time.sleep(4)  # Simuliere Verarbeitung
-            logger.info(f"geschlafen fuer 4 Sekunden")
+            time.sleep(3)  # Simuliere Verarbeitung
+            logger.info(f"geschlafen fuer 3 Sekunden")
             logger.info(f"Paket Typ {package_type} verarbeitet.")
             # Sende Bestätigung
             client.publish(PROCESSED_TYPE_2_TOPIC, json.dumps({"package_type": package_type}))
+            logger.info(f"Bestätigung für Paket Typ {package_type} gesendet.")
+
+        if (package_type == 2 or package_type == 1) and NAME == "roboter_3":
+            logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
+            set_status(client, "running")
+            time.sleep(6)  # Simuliere Verarbeitung
+            logger.info(f"geschlafen fuer 6 Sekunden")
+            logger.info(f"Paket Typ {package_type} verarbeitet.")
+            # Sende Bestätigung
+            client.publish(PROCESSED_TYPE_3_TOPIC, json.dumps({"package_type": package_type}))
             logger.info(f"Bestätigung für Paket Typ {package_type} gesendet.")
 
     except Exception as e:
@@ -71,7 +82,7 @@ def process_package(client, package_type):
     finally:
         set_status(client, "ready")
 
-def on_supplier_message(client, userdata, msg):
+def on_message(client, userdata, msg):
     """
     Callback für Nachrichten vom Supplier.
     Verarbeitet die Anfragen basierend auf dem Pakettyp und Roboter-Name.
@@ -93,6 +104,8 @@ def on_supplier_message(client, userdata, msg):
         # Roboter 2 bearbeitet nur Paket Typ 2
         elif NAME == "roboter_2" and requested_package_type == 2:
             process_package(client, requested_package_type)
+        elif NAME == "roboter_3" and requested_package_type == 2 or requested_package_type == 1:
+            process_package(client, requested_package_type)
         else:
             logger.warning(f"{client} ignoriert Paket Typ {requested_package_type}")
     except (json.JSONDecodeError, KeyError) as e:
@@ -112,12 +125,19 @@ def main():
     # Subscriptions für die entsprechenden Roboter
     if mqtt.name == "roboter_1":
         mqtt.subscribe(SUPPLIER_TYPE_1_REQUEST_TOPIC)
-        mqtt.subscribe_with_callback(SUPPLIER_TYPE_1_REQUEST_TOPIC, on_supplier_message)
+        mqtt.subscribe_with_callback(SUPPLIER_TYPE_1_REQUEST_TOPIC, on_message)
         logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_1_REQUEST_TOPIC}")
     elif mqtt.name == "roboter_2":
         mqtt.subscribe(SUPPLIER_TYPE_2_REQUEST_TOPIC)
-        mqtt.subscribe_with_callback(SUPPLIER_TYPE_2_REQUEST_TOPIC, on_supplier_message)
+        mqtt.subscribe_with_callback(SUPPLIER_TYPE_2_REQUEST_TOPIC, on_message)
         logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_2_REQUEST_TOPIC}")
+    elif mqtt.name == "roboter_3":
+        mqtt.subscribe(PROCESSED_TYPE_1_TOPIC)
+        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_1_TOPIC}")
+        mqtt.subscribe(PROCESSED_TYPE_2_TOPIC)
+        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_2_TOPIC}")
+        mqtt.subscribe_with_callback(PROCESSED_TYPE_1_TOPIC, on_message)
+        mqtt.subscribe_with_callback(PROCESSED_TYPE_2_TOPIC, on_message)
     else:
         logger.error(f"Unbekannter Robotername: {mqtt.name}")
         sys.exit(1)

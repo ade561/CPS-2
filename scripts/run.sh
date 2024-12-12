@@ -16,6 +16,7 @@ echo "Starting Storage_1"
 docker run -d --net=cps-net \
   -e EC_NAME='storage_1' \
   -e EC_MQTT_TOPIC='storage/1/data' \
+  -e STORAGE_PROCESS_TOPIC='storage/1/processed' \
   -e PACKET_TYPE_1_COUNT=0 \
   -e PACKET_TYPE_2_COUNT=0 \
   --name storage_1 storage:0.1
@@ -24,6 +25,7 @@ echo "Starting Supplier_1"
 docker run -d --net=cps-net \
   -e EC_NAME='supplier_1' \
   -e EC_MQTT_TOPIC='supplier/1/data' \
+  -e SUPPLIER_PROCESS_TOPIC='supplier/1/processed' \
   -e PACKET_TYPE_1_UNIT=100 \
   -e PACKET_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
