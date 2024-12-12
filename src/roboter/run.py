@@ -5,15 +5,7 @@ import os
 import time
 from mqtt.mqtt_wrapper import MQTTWrapper
 
-# Logging-Konfiguration
-logging.basicConfig(
-    level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # Log-Ausgabe auf die Konsole
-    ]
-)
-logger = logging.getLogger(__name__)
+
 
 #name of the Senosr
 NAME = os.environ['EC_NAME']
@@ -29,8 +21,23 @@ PROCESSED_TYPE_1_TOPIC = 'roboter/1/processed'
 PROCESSED_TYPE_2_TOPIC = 'roboter/2/processed'
 PROCESSED_TYPE_3_TOPIC = 'roboter/3/processed'
 
+TICK_TOPIC = "tickgen/tick"
+
 # Variables
 roboter_status = os.environ.get('ROBOTER_STATUS')
+first_connection = True
+roboter_map = {}
+
+# Logging-Konfiguration
+logging.basicConfig(
+    level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # Log-Ausgabe auf die Konsole
+    ]
+)
+logger = logging.getLogger(NAME)
+
 
 def set_status(client, status):
     """
@@ -39,7 +46,7 @@ def set_status(client, status):
     global roboter_status
     roboter_status = status
     client.publish(DATA_TOPIC, json.dumps({"name": NAME, "status": status}))
-    logger.info(f"Status geändert auf: {status}")
+    logger.info(f"Status geändert auf: {status}\n")
 
 
 def process_package(client, package_type):
@@ -51,7 +58,6 @@ def process_package(client, package_type):
             logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
             set_status(client, "running")
             time.sleep(4)  # Simuliere Verarbeitung
-            logger.info(f"geschlafen fuer 4 Sekunden")
             logger.info(f"Paket Typ {package_type} verarbeitet.")
             # Sende Bestätigung
             client.publish(PROCESSED_TYPE_1_TOPIC, json.dumps({"package_type": package_type}))
@@ -60,8 +66,7 @@ def process_package(client, package_type):
         if package_type == 2 and NAME == "roboter_1" or NAME == "roboter_2":
             logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
             set_status(client, "running")
-            time.sleep(3)  # Simuliere Verarbeitung
-            logger.info(f"geschlafen fuer 3 Sekunden")
+            time.sleep(2)  # Simuliere Verarbeitung
             logger.info(f"Paket Typ {package_type} verarbeitet.")
             # Sende Bestätigung
             client.publish(PROCESSED_TYPE_2_TOPIC, json.dumps({"package_type": package_type}))
@@ -70,8 +75,7 @@ def process_package(client, package_type):
         if (package_type == 2 or package_type == 1) and NAME == "roboter_3":
             logger.info(f"Beginne Verarbeitung von Paket Typ {package_type}.")
             set_status(client, "running")
-            time.sleep(6)  # Simuliere Verarbeitung
-            logger.info(f"geschlafen fuer 6 Sekunden")
+            time.sleep(5)  # Simuliere Verarbeitung
             logger.info(f"Paket Typ {package_type} verarbeitet.")
             # Sende Bestätigung
             client.publish(PROCESSED_TYPE_3_TOPIC, json.dumps({"package_type": package_type}))
@@ -96,7 +100,7 @@ def on_message(client, userdata, msg):
     try:
         message = json.loads(msg.payload.decode("utf-8"))
         requested_package_type = message.get("package_type", "unknown")
-        logger.info(f"Nachricht vom Supplier empfangen: {message}")
+        logger.info(f"\nNachricht vom Supplier empfangen: {message}")
 
         # Roboter 1 bearbeitet nur Paket Typ 1
         if NAME == "roboter_1" and requested_package_type == 1:
@@ -111,36 +115,36 @@ def on_message(client, userdata, msg):
     except (json.JSONDecodeError, KeyError) as e:
         logger.error(f"Fehler beim Verarbeiten der Nachricht: {e}")
 
+def to_sub(mqtt):
+    mqtt.subscribe(TICK_TOPIC)
+    # Subscriptions für die entsprechenden Roboter
+    if mqtt.name == "roboter_1":
+        mqtt.subscribe_with_callback(SUPPLIER_TYPE_1_REQUEST_TOPIC, on_message)
+        logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_1_REQUEST_TOPIC}\n")
+    elif mqtt.name == "roboter_2":
+        mqtt.subscribe_with_callback(SUPPLIER_TYPE_2_REQUEST_TOPIC, on_message)
+        logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_2_REQUEST_TOPIC}")
+    elif mqtt.name == "roboter_3":
+        mqtt.subscribe_with_callback(PROCESSED_TYPE_1_TOPIC, on_message)
+        mqtt.subscribe_with_callback(PROCESSED_TYPE_2_TOPIC, on_message)
+        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_1_TOPIC}")
+        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_2_TOPIC}")
+    else:
+        logger.error(f"Unbekannter Robotername: {mqtt.name}")
+        sys.exit(1)
+
 
 def main():
+    global first_connection, roboter_map
     """
     Main function to initialize the MQTT client and start the event loop.
     """
     logger.info(f"Initializing MQTT client with name: {NAME}")
     logger.info(f"Publishing Roboter data to topic: {DATA_TOPIC}")
 
-    # MQTT-Client mit userdata initialisieren
-    mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
 
-    # Subscriptions für die entsprechenden Roboter
-    if mqtt.name == "roboter_1":
-        mqtt.subscribe(SUPPLIER_TYPE_1_REQUEST_TOPIC)
-        mqtt.subscribe_with_callback(SUPPLIER_TYPE_1_REQUEST_TOPIC, on_message)
-        logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_1_REQUEST_TOPIC}")
-    elif mqtt.name == "roboter_2":
-        mqtt.subscribe(SUPPLIER_TYPE_2_REQUEST_TOPIC)
-        mqtt.subscribe_with_callback(SUPPLIER_TYPE_2_REQUEST_TOPIC, on_message)
-        logger.info(f"{mqtt.name} subscribed to {SUPPLIER_TYPE_2_REQUEST_TOPIC}")
-    elif mqtt.name == "roboter_3":
-        mqtt.subscribe(PROCESSED_TYPE_1_TOPIC)
-        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_1_TOPIC}")
-        mqtt.subscribe(PROCESSED_TYPE_2_TOPIC)
-        logger.info(f"{mqtt.name} subscribed to {PROCESSED_TYPE_2_TOPIC}")
-        mqtt.subscribe_with_callback(PROCESSED_TYPE_1_TOPIC, on_message)
-        mqtt.subscribe_with_callback(PROCESSED_TYPE_2_TOPIC, on_message)
-    else:
-        logger.error(f"Unbekannter Robotername: {mqtt.name}")
-        sys.exit(1)
+    mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
+    to_sub(mqtt)
 
     # Starte die MQTT-Schleife
     try:
@@ -154,6 +158,7 @@ def main():
         logger.error(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
         mqtt.stop()
         sys.exit(1)
+
 
 
 if __name__ == '__main__':
