@@ -5,7 +5,7 @@ import os
 import time
 from mqtt.mqtt_wrapper import MQTTWrapper
 
-
+#TODO Battery Management of the Robots
 
 #name of the Senosr
 NAME = os.environ['EC_NAME']
