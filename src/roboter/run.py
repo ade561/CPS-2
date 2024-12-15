@@ -5,7 +5,7 @@ import os
 import time
 from mqtt.mqtt_wrapper import MQTTWrapper
 
-
+#TODO RE-CONFIGURATION OF THE ROBOTS
 
 #name of the Senosr
 NAME = os.environ['EC_NAME']
