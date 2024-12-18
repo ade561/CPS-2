@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+import random
 from mqtt.mqtt_wrapper import MQTTWrapper
 
 # Logging-Konfiguration
@@ -15,62 +16,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-#name of the Senosr
+# Name des Sensors
 NAME = os.environ['EC_NAME']
 
-# MQTT topic for publishing sensor data
+# MQTT Topics aus Umgebungsvariablen
 DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
-
-# MQTT Subscribed TOPICS
 TICK_TOPIC = "tickgen/tick"
-SUPPLIER_X_REQUEST_TOPIC = os.environ.get('SUPPLIER_REQUEST_TOPIC')
+CFP_TOPIC = os.environ.get('CFP_TOPIC')  # Call-for-Proposals-Thema
+PROPOSALS_TOPIC = os.environ.get('PROPOSALS_TOPIC')  # Proposals-Thema
 
-# Variables
-supplier_package_type_1 = int(os.environ.get('PACKET_TYPE_1_UNIT', 100))
-supplier_package_type_2 = int(os.environ.get('PACKET_TYPE_2_UNIT', 100))
+# Variablen
+supplier_package_type_1 = int(os.environ.get('PACKAGE_TYPE_1_UNIT', 100))
+supplier_package_type_2 = int(os.environ.get('PACKAGE_TYPE_2_UNIT', 100))
 tick_counter_A = 0
 tick_counter_B = 0
+valid_priorities = ["leicht", "mittel", "schwer"]
 
-
-def request_package(client, request_topic, package_type):
+def call_for_proposals(client, cfp_topic, package_type, priority, quantity=1):
     """
-    Sendet eine Anfrage an einen Roboter, um ein Paket abzuholen.
+    Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
     """
-    request_data = {"package_type": package_type, "quantity": 1}
-    client.publish(request_topic, json.dumps(request_data))
-    logger.info(f"Anfrage an {request_topic} gesendet: {request_data}")
+    # Validierung der Priorität
+    if priority not in valid_priorities:
+        logger.warning(f"Ungültige Priorität '{priority}' gesetzt. Standard: 'mittel'")
+        priority = "mittel"
 
+    # Erstelle die CfP-Daten
+    cfp_data = {
+        "package_type": package_type,
+        "quantity": quantity,
+        "priority": priority
+    }
 
+    # Veröffentliche die CfP auf dem spezifizierten Thema
+    client.publish(cfp_topic, json.dumps(cfp_data))
+    logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_tick(client, userdata, msg):
     """
     Callback für Tick-Nachrichten. Sendet Anfragen an Roboter, wenn Pakete verfügbar sind.
     """
-    global supplier_package_type_1, supplier_package_type_2, tick_counter
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, valid_priorities
 
     ts_iso = msg.payload.decode("utf-8")
     logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
-    # Anfrage senden, Bestand wird NICHT reduziert
-    if supplier_package_type_1 > 0:
-        request_package(client, SUPPLIER_X_REQUEST_TOPIC, 1)
-    else:
+    # Zufällige Gewichtsklasse und Pakettyp wählen
+    random_index = random.randint(0, 2)  # Generiert eine Zahl zwischen 0 und 2 (inklusive)
+    random_package = 1 if random.random() < 0.6 else 2  # 60% für 1, 40% für 2
+    weight_class = valid_priorities[random_index]
+
+    # Paket-Typ 1: Anfrage oder Nachfüllen
+    if supplier_package_type_1 > 0 and random_package == 1:
+        call_for_proposals(client, CFP_TOPIC, 1, weight_class)
+    elif supplier_package_type_1 <= 0 and random_package == 1:
         if tick_counter_A >= 10:
             tick_counter_A = 0
             supplier_package_type_1 = 100
             logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
         else:
             tick_counter_A += 1
-    if supplier_package_type_2 > 0:
-        request_package(client,SUPPLIER_X_REQUEST_TOPIC , 2)
-    else:
+
+    # Paket-Typ 2: Anfrage oder Nachfüllen
+    if supplier_package_type_2 > 0 and random_package == 2:
+        call_for_proposals(client, CFP_TOPIC, 2, weight_class)
+    elif supplier_package_type_2 <= 0 and random_package == 2:
         if tick_counter_B >= 10:
             tick_counter_B = 0
             supplier_package_type_2 = 100
             logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
         else:
             tick_counter_B += 1
-    
+
     # Nur aktuelle Bestände veröffentlichen, ohne sie zu ändern
     data = {
         "package_type_1": supplier_package_type_1,
@@ -80,40 +97,11 @@ def on_message_tick(client, userdata, msg):
     client.publish(DATA_TOPIC, json.dumps(data))
     logger.info(f"Bestand veröffentlicht (vor Verarbeitung): {data}")
 
-
-
-def on_package_processed(client,userdata, msg):
-    """
-    Callback für Verarbeitungsbestätigungen von Robotern. Reduziert den Paketbestand.
-    """
-    global supplier_package_type_1, supplier_package_type_2
-
-    try:
-        # Nachricht des Roboters dekodieren
-        processed_info = json.loads(msg.payload.decode("utf-8"))
-        package_type = processed_info.get("package_type", "unknown")
-        logger.info(f"Bestätigung empfangen: {processed_info}")
-
-        # Bestand basierend auf Pakettyp reduzieren
-        if package_type == 1 and supplier_package_type_1 > 0:
-            supplier_package_type_1 -= 1
-            logger.info(f"Bestand Typ 1 reduziert. Verbleibend: {supplier_package_type_1}")
-        elif package_type == 2 and supplier_package_type_2 > 0:
-            supplier_package_type_2 -= 1
-            logger.info(f"Bestand Typ 2 reduziert. Verbleibend: {supplier_package_type_2}")
-        else:
-            logger.warning(f"Unbekannter oder inkonsistenter Pakettyp: {package_type}")
-    except Exception as e:
-        logger.error(f"Fehler beim Verarbeiten der Bestätigung: {e}")
-
-
-
 def main():
     """
     Main function to initialize the MQTT client and start the event loop.
     """
-
-    global TICK_TOPIC, ROBOTER_X_PROCESSED_TOPIC, SUPPLIER_X_REQUEST_TOPIC
+    global TICK_TOPIC, CFP_TOPIC, PROPOSALS_TOPIC
 
     logger.info(f"Initializing MQTT client with name: {NAME}")
 
@@ -123,8 +111,8 @@ def main():
     mqtt.subscribe(TICK_TOPIC)
     logger.info(f"Subscribing to tick topic: {TICK_TOPIC}")
 
+    # Callback für Ticks hinzufügen
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
-
 
     try:
         logger.info("Starting MQTT loop...")

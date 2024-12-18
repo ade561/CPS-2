@@ -10,7 +10,7 @@ class MQTTWrapper:
         self.broker_ip = broker_ip
         self.broker_port = broker_port
         self.name = name
-        self.subscriptions = subscriptions if subscriptions is not None else []
+        self.subscriptions = subscriptions
         self.on_message_callback = on_message_callback
         self.log_level = log_level
 
@@ -43,28 +43,17 @@ class MQTTWrapper:
         self.client.subscribe(topic)
 
     def subscribe_with_callback(self, sub, callback):
-        if self.subscriptions is None:
-            self.subscriptions = []  # Initialisiere, falls es None ist
-        self.client.subscribe(sub)
-        self.subscriptions.append(sub)
         self.client.message_callback_add(sub, callback)
 
     # The callback for when the client receives a CONNACK response from the server.
     def on_connect(self, client, userdata, flags, rc):
-        self.log.info("MQTT_WRAPPER Connected to " + self.broker_ip + ":" + str(self.broker_port) + " with result code " + str(rc))
+        self.log.info("Connected to " + self.broker_ip + ":" + str(self.broker_port) + " with result code " + str(rc))
 
-
-            # Logging der Subscriptions vor der if-Bedingung
-        if self.subscriptions:
-            subs_list = "\n".join(self.subscriptions)
-            self.log.info(f"Found subscriptions to re-subscribe:\n{subs_list}")
-        else:
-            self.log.info("No subscriptions found (self.subscriptions is None).")
         # Subscribing in on_connect() means that if we lose the connection and
         # reconnect then subscriptions will be renewed.
         if self.subscriptions is not None:
             for sub in self.subscriptions:
-                self.log.info('Re-subscribe to ' + sub)
+                self.log.info('subscribe to ' + sub)
                 self.client.subscribe(sub)
 
     def on_message(self, client, userdata, msg):

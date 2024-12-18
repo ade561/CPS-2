@@ -25,25 +25,30 @@ echo "Starting Supplier_1"
 docker run -d --net=cps-net \
   -e EC_NAME='supplier_1' \
   -e EC_MQTT_TOPIC='supplier/1/data' \
-  -e SUPPLIER_REQUEST_TOPIC='supplier/1/request' \
+  -e CFP_TOPIC='supplier/1/cfp' \
+  -e PROPOSALS_TOPIC='supplier/1/proposals' \
   -e PACKAGE_TYPE_1_UNIT=100 \
   -e PACKAGE_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
 
-# echo "Starting Robots"
-# docker run -d --net=cps-net \
-#   -e EC_NAME='roboter_1' \
-#   -e EC_MQTT_TOPIC='roboter/1/data' \
-#   -e PROCESSED_TOPIC='roboter/1/processed' \
-#   -e ROBOTER_TYPE=1 \
-#   --name roboter_1 roboter:0.1
 
-# docker run -d --net=cps-net \
-#   -e EC_NAME='roboter_2' \
-#   -e EC_MQTT_TOPIC='roboter/2/data' \
-#   -e PROCESSED_TOPIC='roboter/2/processed' \
-#   -e ROBOTER_TYPE=2 \
-#   --name roboter_2 roboter:0.1
+echo "Starting Robots"
+docker run -d --net=cps-net \
+  -e EC_NAME='roboter_1' \
+  -e EC_MQTT_TOPIC='roboter/1/data' \
+  -e PROCESSED_TOPIC='roboter/1/processed' \
+  -e CFP_TOPIC='supplier/1/cfp' \
+  -e ROBOTER_TYPE=1 \
+  --name roboter_1 roboter:0.1
+
+docker run -d --net=cps-net \
+  -e EC_NAME='roboter_2' \
+  -e EC_MQTT_TOPIC='roboter/2/data' \
+  -e PROCESSED_TOPIC='roboter/2/processed' \
+  -e CFP_TOPIC='supplier/1/cfp' \
+  -e ROBOTER_TYPE=2 \
+  --name roboter_2 roboter:0.1
+
 
 # docker run -d --net=cps-net \
 #   -e EC_NAME='roboter_3' \
