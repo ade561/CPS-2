@@ -23,28 +23,22 @@ DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
 
 # MQTT Subscribed TOPICS
 TICK_TOPIC = "tickgen/tick"
-ROBOTER_1_STATUS_TOPIC = 'roboter/1/status'
-ROBOTER_2_STATUS_TOPIC = 'roboter/2/status'
-
-ROBOTER_1_PROCESS_TOPIC = 'roboter/1/processed'
-ROBOTER_2_PROCESS_TOPIC = 'roboter/2/processed'
-
-ROBOTER_1_REQUEST_TOPIC = 'roboter/1/request'
-ROBOTER_2_REQUEST_TOPIC = 'roboter/2/request'
-
+SUPPLIER_X_REQUEST_TOPIC = os.environ.get('SUPPLIER_REQUEST_TOPIC')
 
 # Variables
 supplier_package_type_1 = int(os.environ.get('PACKET_TYPE_1_UNIT', 100))
 supplier_package_type_2 = int(os.environ.get('PACKET_TYPE_2_UNIT', 100))
+tick_counter_A = 0
+tick_counter_B = 0
 
 
-def request_package(client, robot_topic, package_type):
+def request_package(client, request_topic, package_type):
     """
     Sendet eine Anfrage an einen Roboter, um ein Paket abzuholen.
     """
     request_data = {"package_type": package_type, "quantity": 1}
-    client.publish(robot_topic, json.dumps(request_data))
-    logger.info(f"Anfrage an {robot_topic} gesendet: {request_data}")
+    client.publish(request_topic, json.dumps(request_data))
+    logger.info(f"Anfrage an {request_topic} gesendet: {request_data}")
 
 
 
@@ -52,22 +46,30 @@ def on_message_tick(client, userdata, msg):
     """
     Callback für Tick-Nachrichten. Sendet Anfragen an Roboter, wenn Pakete verfügbar sind.
     """
-    global supplier_package_type_1, supplier_package_type_2
+    global supplier_package_type_1, supplier_package_type_2, tick_counter
 
     ts_iso = msg.payload.decode("utf-8")
     logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
     # Anfrage senden, Bestand wird NICHT reduziert
     if supplier_package_type_1 > 0:
-        request_package(client, ROBOTER_1_REQUEST_TOPIC, 1)
+        request_package(client, SUPPLIER_X_REQUEST_TOPIC, 1)
     else:
-        supplier_package_type_1 = 100
-        logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
+        if tick_counter_A >= 10:
+            tick_counter_A = 0
+            supplier_package_type_1 = 100
+            logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
+        else:
+            tick_counter_A += 1
     if supplier_package_type_2 > 0:
-        request_package(client, ROBOTER_2_REQUEST_TOPIC, 2)
+        request_package(client,SUPPLIER_X_REQUEST_TOPIC , 2)
     else:
-        supplier_package_type_2 = 100
-        logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
+        if tick_counter_B >= 10:
+            tick_counter_B = 0
+            supplier_package_type_2 = 100
+            logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
+        else:
+            tick_counter_B += 1
     
     # Nur aktuelle Bestände veröffentlichen, ohne sie zu ändern
     data = {
@@ -80,7 +82,7 @@ def on_message_tick(client, userdata, msg):
 
 
 
-def on_package_processed(client, userdata, msg):
+def on_package_processed(client,userdata, msg):
     """
     Callback für Verarbeitungsbestätigungen von Robotern. Reduziert den Paketbestand.
     """
@@ -110,26 +112,18 @@ def main():
     """
     Main function to initialize the MQTT client and start the event loop.
     """
+
+    global TICK_TOPIC, ROBOTER_X_PROCESSED_TOPIC, SUPPLIER_X_REQUEST_TOPIC
+
     logger.info(f"Initializing MQTT client with name: {NAME}")
 
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
 
     # Subscriptions
-    mqtt.subscribe(ROBOTER_1_PROCESS_TOPIC)
-    logger.info(f"Subscribing to tick topic: {ROBOTER_1_PROCESS_TOPIC}")
-
-    mqtt.subscribe(ROBOTER_2_PROCESS_TOPIC)
-    logger.info(f"Subscribing to tick topic: {ROBOTER_2_PROCESS_TOPIC}")
-
     mqtt.subscribe(TICK_TOPIC)
     logger.info(f"Subscribing to tick topic: {TICK_TOPIC}")
 
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
-
-
-    mqtt.subscribe_with_callback(ROBOTER_1_PROCESS_TOPIC, on_package_processed)
-
-    mqtt.subscribe_with_callback(ROBOTER_2_PROCESS_TOPIC, on_package_processed)
 
 
     try:
