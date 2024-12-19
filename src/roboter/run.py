@@ -20,6 +20,7 @@ TICK_TOPIC = "tickgen/tick"
 # Variablen
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
 roboter_status = "ready"  # Standardstatus des Roboters
+roboter_battery = 100
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -30,6 +31,20 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(NAME)
+
+def charge_battery():
+    """
+    Simuliert das Aufladen des Roboters.
+    """
+    global roboter_battery, roboter_status
+    roboter_status = "charging"
+    logger.info(f"{NAME} beginnt mit dem Aufladen des Akkus.")
+    while roboter_battery < 100:
+        time.sleep(1)  # Simuliere Ladezeit
+        roboter_battery += 10
+        logger.info(f"{NAME} lädt auf... Akku: {roboter_battery}%")
+    roboter_status = "ready"
+    logger.info(f"{NAME} Akku vollständig aufgeladen. Status: {roboter_status}.")
 
 
 def on_cfp_message(client, userdata, msg):
@@ -77,17 +92,32 @@ def on_tick_message(client, userdata, msg):
     Callback für Tick-Nachrichten.
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
-    global last_cfp_data, roboter_status
-    logger.info("Tick empfangen.")
-    
+    global last_cfp_data, roboter_status, roboter_battery
+    ts_iso = msg.payload.decode("utf-8")
+    logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
+
+    # Akku prüfen
+    if roboter_battery < 20:
+        logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
+        charge_battery()
+        return  # Kein Proposal senden, wenn der Akku geladen wird.
+
     if last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = last_cfp_data.get("package_type")
         priority = last_cfp_data.get("priority", "mittel")
         quantity = last_cfp_data.get("quantity", 1)
-        
+
+        data = {
+            "battery": roboter_battery,
+            "timestamp": ts_iso
+        }
+        client.publish(DATA_TOPIC, json.dumps(data))
+        logger.info(f"{NAME} Daten veröffentlicht: {data}")
+
         # Berechne die Bearbeitungszeit und sende ein Proposal
         estimated_time = calculate_estimated_time(package_type)
         send_proposal(client, package_type, priority, quantity, estimated_time)
+
 
 
 
@@ -109,7 +139,6 @@ def send_proposal(client, package_type, priority, quantity, estimated_time):
     logger.info(f"Status des {NAME}: {roboter_status}.")
 
 
-
 def calculate_estimated_time(package_type):
     """
     Berechnet die geschätzte Bearbeitungszeit basierend auf dem Pakettyp.
@@ -123,7 +152,7 @@ def process_package(client, package_type, package_time):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
-    global roboter_status
+    global roboter_status, roboter_battery
     try:
         logger.info(f"{NAME} beginnt mit der Bearbeitung von Paket Typ {package_type}.")
         time.sleep(package_time)  # Simuliere Bearbeitungszeit
@@ -137,7 +166,8 @@ def process_package(client, package_type, package_time):
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
-
+        roboter_battery -= package_time
+        logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"  # Roboter ist wieder bereit
         logger.info(f"Status des {NAME}: {roboter_status}.")
     except Exception as e:

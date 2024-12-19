@@ -53,16 +53,14 @@ def call_for_proposals(client, cfp_topic, package_type, priority, quantity=1):
     logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_proposals(client, userdata, msg):
-    """
-    Callback für Proposals. Speichert eingehende Angebote.
-    """
     global proposals
     try:
         proposal = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"Proposal empfangen: {proposal}")
-        proposals.append(proposal)  # Angebot speichern
+        proposals.append(proposal)
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
+
 
 def on_processed_message(client, userdata, msg):
     """
@@ -84,11 +82,14 @@ def on_processed_message(client, userdata, msg):
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
 
+
 def select_winner_and_award(client):
     """
     Wählt den besten Roboter aus den empfangenen Proposals aus und sendet eine Award-Nachricht.
     """
     global proposals
+
+
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
         return
@@ -117,7 +118,7 @@ def on_message_tick(client, userdata, msg):
     logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
     random_index = random.randint(0, 2)
-    random_package = 1 if random.random() < 0.6 else 2
+    random_package = 1 if random.random() < 0.5 else 2
     weight_class = valid_priorities[random_index]
 
     if supplier_package_type_1 > 0 and random_package == 1:
