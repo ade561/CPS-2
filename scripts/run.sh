@@ -27,6 +27,7 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='supplier/1/data' \
   -e CFP_TOPIC='supplier/1/cfp' \
   -e PROPOSALS_TOPIC='supplier/1/proposals' \
+  -e AWARD_TOPIC='supplier/1/award' \
   -e PACKAGE_TYPE_1_UNIT=100 \
   -e PACKAGE_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
