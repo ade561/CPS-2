@@ -20,7 +20,6 @@ TICK_TOPIC = "tickgen/tick"
 # Variablen
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
 roboter_status = "ready"  # Standardstatus des Roboters
-ROBOTER_TYPE = int(os.environ.get('ROBOTER_TYPE', 1))  # Roboter-Typ
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -86,12 +85,10 @@ def on_tick_message(client, userdata, msg):
         priority = last_cfp_data.get("priority", "mittel")
         quantity = last_cfp_data.get("quantity", 1)
         
-        # Prüfen, ob der Roboter den Pakettyp bearbeiten kann
-        if package_type == ROBOTER_TYPE:
-            estimated_time = calculate_estimated_time(package_type)
-            send_proposal(client, package_type, priority, quantity, estimated_time)
-        else:
-            logger.info(f"{NAME} kann Paket Typ {package_type} nicht bearbeiten.")
+        # Berechne die Bearbeitungszeit und sende ein Proposal
+        estimated_time = calculate_estimated_time(package_type)
+        send_proposal(client, package_type, priority, quantity, estimated_time)
+
 
 
 def send_proposal(client, package_type, priority, quantity, estimated_time):
@@ -109,6 +106,8 @@ def send_proposal(client, package_type, priority, quantity, estimated_time):
     client.publish(PROPOSALS_TOPIC, json.dumps(proposal))  # Proposal senden
     logger.info(f"Proposal gesendet: {proposal}")
     roboter_status = "busy"  # Roboter wird auf "busy" gesetzt
+    logger.info(f"Status des {NAME}: {roboter_status}.")
+
 
 
 def calculate_estimated_time(package_type):
@@ -120,7 +119,7 @@ def calculate_estimated_time(package_type):
     return random_time
 
 
-def process_package(client,package_type, package_time):
+def process_package(client, package_type, package_time):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
@@ -140,8 +139,10 @@ def process_package(client,package_type, package_time):
         logger.info(f"Bestätigung gesendet: {confirmation}")
 
         roboter_status = "ready"  # Roboter ist wieder bereit
+        logger.info(f"Status des {NAME}: {roboter_status}.")
     except Exception as e:
         logger.error(f"Fehler bei der Bearbeitung des Pakets: {e}")
+
 
 
 

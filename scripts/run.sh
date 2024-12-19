@@ -39,7 +39,6 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='roboter/1/data' \
   -e PROCESSED_TOPIC='roboter/1/processed' \
   -e CFP_TOPIC='supplier/1/cfp' \
-  -e ROBOTER_TYPE=1 \
   --name roboter_1 roboter:0.1
 
 docker run -d --net=cps-net \
@@ -47,7 +46,6 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='roboter/2/data' \
   -e PROCESSED_TOPIC='roboter/2/processed' \
   -e CFP_TOPIC='supplier/1/cfp' \
-  -e ROBOTER_TYPE=2 \
   --name roboter_2 roboter:0.1
 
 
