@@ -23,9 +23,10 @@ NAME = os.environ['EC_NAME']
 DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
 TICK_TOPIC = "tickgen/tick"
 CFP_TOPIC = os.environ.get('CFP_TOPIC')  # Call-for-Proposals-Thema
-PROPOSALS_TOPIC = os.environ.get('PROPOSALS_TOPIC')  # Proposals-Thema
+ROBOTER_PROPOSAL_TOPIC = 'roboter/+/proposal' # Proposals-Thema
 AWARD_TOPIC = "supplier/1/award"  # Thema für Gewinner
 PROCESSED_TOPIC = 'roboter/+/processed'  # Thema für Bearbeitungsbestätigungen
+ROBOTER_REGISTER_TOPIC='roboter/+/register'
 
 # Variablen
 supplier_package_type_1 = int(os.environ.get('PACKAGE_TYPE_1_UNIT', 100))
@@ -34,6 +35,7 @@ tick_counter_A = 0
 tick_counter_B = 0
 valid_priorities = ["leicht", "mittel", "schwer"]
 proposals = []  # Liste der empfangenen Angebote
+registrated_robots = set()
 
 def call_for_proposals(client, cfp_topic, package_type, priority, quantity=1):
     """
@@ -53,11 +55,15 @@ def call_for_proposals(client, cfp_topic, package_type, priority, quantity=1):
     logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_proposals(client, userdata, msg):
-    global proposals
+    global proposals,registrated_robots
     try:
-        proposal = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Proposal empfangen: {proposal}")
-        proposals.append(proposal)
+        counter = 0
+        while  counter < len(registrated_robots):
+            proposal = json.loads(msg.payload.decode("utf-8"))
+            logger.info(f"Proposal empfangen: {proposal}")
+            proposals.append(proposal)
+            counter += 1
+        select_winner_and_award(client)
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
 
@@ -78,7 +84,7 @@ def on_processed_message(client, userdata, msg):
         elif package_type == 2:
             supplier_package_type_2 -= 1
 
-        logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
+        #logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
 
@@ -115,7 +121,7 @@ def on_message_tick(client, userdata, msg):
     global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, valid_priorities
 
     ts_iso = msg.payload.decode("utf-8")
-    logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
+    #logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
     random_index = random.randint(0, 2)
     random_package = 1 if random.random() < 0.5 else 2
@@ -141,8 +147,6 @@ def on_message_tick(client, userdata, msg):
         else:
             tick_counter_B += 1
 
-    select_winner_and_award(client)
-
     data = {
         "package_type_1": supplier_package_type_1,
         "package_type_2": supplier_package_type_2,
@@ -151,11 +155,27 @@ def on_message_tick(client, userdata, msg):
     client.publish(DATA_TOPIC, json.dumps(data))
     logger.info(f"Bestand veröffentlicht: {data}")
 
+
+def on_registration(client, userdata, msg):
+    global registrated_robots
+    register_data = json.loads(msg.payload.decode("utf-8"))
+
+    # Beispiel: Nehmen wir an, `register_data` enthält eine eindeutige "id" des Roboters.
+    robot_id = register_data.get("name")
+    if robot_id:
+        registrated_robots.add(robot_id)  # Nur die ID hinzufügen
+        logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
+    else:
+        logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
+
+    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
+
+
 def main():
     """
     Main function to initialize the MQTT client and start the event loop.
     """
-    global TICK_TOPIC, CFP_TOPIC, PROPOSALS_TOPIC
+    global TICK_TOPIC, CFP_TOPIC, ROBOTER_PROPOSAL_TOPIC
 
     logger.info(f"Initializing MQTT client with name: {NAME}")
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
@@ -163,8 +183,11 @@ def main():
     mqtt.subscribe(TICK_TOPIC)
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
 
-    mqtt.subscribe(PROPOSALS_TOPIC)
-    mqtt.subscribe_with_callback(PROPOSALS_TOPIC, on_message_proposals)
+    mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
+    mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
+
+    mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
+    mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
 
     mqtt.subscribe(PROCESSED_TOPIC)
     mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)

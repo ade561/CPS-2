@@ -13,14 +13,16 @@ NAME = os.environ['EC_NAME']
 DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
 CFP_TOPIC = os.environ.get('CFP_TOPIC')  # CfP-Thema
 PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
-PROPOSALS_TOPIC = "supplier/1/proposals"  # Thema für Angebote
-AWARD_TOPIC = "supplier/1/award"  # Thema für Gewinner
+ROBOT_PROPOSAL_TOPIC = os.environ.get('ROBOTER_PROPOSAL_TOPIC')
+ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')  # Thema für Angebote
+AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
 TICK_TOPIC = "tickgen/tick"
 
 # Variablen
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
+register_flag = False
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -52,11 +54,18 @@ def on_cfp_message(client, userdata, msg):
     Callback für CfP-Nachrichten vom Supplier.
     Speichert die empfangenen CfP-Daten.
     """
-    global last_cfp_data
+    global last_cfp_data, register_flag
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"Empfangene CfP-Daten: {cfp_data}")
         last_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
+
+        if register_flag == False:
+            register_data = {"name":NAME}
+            client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
+            logger.info(f"{NAME} meldet registriert sich beim Supplier")
+            register_flag = True
+
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der CfP-Nachricht: {e}")
 
@@ -133,7 +142,7 @@ def send_proposal(client, package_type, priority, quantity, estimated_time):
         "quantity": quantity,
         "estimated_time": estimated_time
     }
-    client.publish(PROPOSALS_TOPIC, json.dumps(proposal))  # Proposal senden
+    client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
     logger.info(f"Proposal gesendet: {proposal}")
     roboter_status = "busy"  # Roboter wird auf "busy" gesetzt
     logger.info(f"Status des {NAME}: {roboter_status}.")

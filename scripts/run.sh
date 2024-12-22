@@ -26,7 +26,6 @@ docker run -d --net=cps-net \
   -e EC_NAME='supplier_1' \
   -e EC_MQTT_TOPIC='supplier/1/data' \
   -e CFP_TOPIC='supplier/1/cfp' \
-  -e PROPOSALS_TOPIC='supplier/1/proposals' \
   -e AWARD_TOPIC='supplier/1/award' \
   -e PACKAGE_TYPE_1_UNIT=100 \
   -e PACKAGE_TYPE_2_UNIT=100 \
@@ -39,6 +38,8 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='roboter/1/data' \
   -e PROCESSED_TOPIC='roboter/1/processed' \
   -e CFP_TOPIC='supplier/1/cfp' \
+  -e ROBOTER_PROPOSAL_TOPIC='roboter/1/proposal' \
+  -e ROBOTER_REGISTER_TOPIC='roboter/1/register' \
   --name roboter_1 roboter:0.1
 
 docker run -d --net=cps-net \
@@ -46,6 +47,8 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='roboter/2/data' \
   -e PROCESSED_TOPIC='roboter/2/processed' \
   -e CFP_TOPIC='supplier/1/cfp' \
+  -e ROBOTER_PROPOSAL_TOPIC='roboter/2/proposal' \
+  -e ROBOTER_REGISTER_TOPIC='roboter/2/register' \
   --name roboter_2 roboter:0.1
 
 
