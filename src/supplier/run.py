@@ -36,7 +36,7 @@ tick_counter_A = 0
 tick_counter_B = 0
 random_quantity = 0
 valid_priorities = ["express", "standard", "post"]
-proposals = []  # Liste der empfangenen Angebote
+proposals = set()  # Liste der empfangenen Angebote
 registrated_robots = set()
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 
@@ -78,24 +78,31 @@ def call_for_proposals(client, cfp_topic, package_type, quantity):
     logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_proposals(client, userdata, msg):
-    global proposals,registrated_robots
-    try:
-        counter = 0
-        available_robots = 0
-        all_values = robot_statuses.values()
-        logger.info(f"Roboter Statuses: {all_values}")
-        for value in all_values:
-            if value == "ready":
-                available_robots += 1
+    global proposals
 
-        while  counter < available_robots:
-            proposal = json.loads(msg.payload.decode("utf-8"))
-            logger.info(f"Proposal empfangen: {proposal}")
-            proposals.append(proposal)
-            counter += 1
-        select_winner_and_award(client)
+    try:
+        # Proposal empfangen
+        proposal = json.loads(msg.payload.decode("utf-8"))
+        logger.info(f"Proposal empfangen: {proposal}")
+
+        # Erstelle ein Tupel aus den Proposal-Daten
+        proposal_tuple = (proposal["name"], proposal["package_type"], proposal["quantity"])
+
+        # Proposal zum Set hinzufügen
+        if proposal_tuple not in proposals:
+            proposals.add(proposal_tuple)
+            logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
+        else:
+            logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
+
+        # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
+        if len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
+            select_winner_and_award(client)
+
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
+    except Exception as e:
+        logger.error(f"Ein unerwarteter Fehler in on_message_proposals: {e}")
 
 
 def on_processed_message(client, userdata, msg):
@@ -126,24 +133,24 @@ def select_winner_and_award(client):
     """
     global proposals
 
-
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
         return
 
     # Wähle den Roboter mit der geringsten geschätzten Bearbeitungszeit
-    winner = min(proposals, key=lambda x: x["estimated_time"])
+    winner = min(proposals, key=lambda x: x[2])  # Nutze die Position des "estimated_time" Werts im Tupel
     award_message = {
-        "winner": winner["name"],
-        "package_type": winner["package_type"],
-        "estimated_time": winner["estimated_time"]
+        "winner": winner[0],          # Name
+        "package_type": winner[1],    # Pakettyp
+        "estimated_time": winner[2]   # Bearbeitungszeit
     }
 
     client.publish(AWARD_TOPIC, json.dumps(award_message))
     logger.info(f"Award vergeben an: {award_message}")
 
-    # Leere die Liste der Proposals nach der Vergabe
-    proposals = []
+    # Leere das Set der Proposals nach der Vergabe
+    proposals.clear()
+
 
 def on_message_tick(client, userdata, msg):
     global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses

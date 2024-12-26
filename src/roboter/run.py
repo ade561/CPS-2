@@ -121,6 +121,7 @@ def on_award_message(client, userdata, msg):
         if award_data["winner"] == NAME:
             logger.info(f"{NAME} hat den Auftrag erhalten. Beginne Bearbeitung.")
             roboter_status = "busy"  # Setze Roboter auf "busy"
+            logger.info(f"Status des {NAME}: {roboter_status}.")
             process_package(client, award_data["package_type"], award_data["estimated_time"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
@@ -169,8 +170,7 @@ def send_proposal(client, package_type, quantity, estimated_time):
     }
     client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
     logger.info(f"Proposal gesendet: {proposal}")
-    roboter_status = "busy"  # Roboter wird auf "busy" gesetzt
-    logger.info(f"Status des {NAME}: {roboter_status}.")
+
 
 
 def calculate_estimated_time(package_type):
