@@ -81,23 +81,23 @@ def on_message_proposals(client, userdata, msg):
     global proposals
 
     try:
+        while len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
         # Proposal empfangen
-        proposal = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Proposal empfangen: {proposal}")
+            proposal = json.loads(msg.payload.decode("utf-8"))
+            logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
-        proposal_tuple = (proposal["name"], proposal["package_type"], proposal["quantity"])
+            proposal_tuple = (proposal["name"], proposal["package_type"], proposal["quantity"])
 
         # Proposal zum Set hinzufügen
-        if proposal_tuple not in proposals:
-            proposals.add(proposal_tuple)
-            logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
-        else:
-            logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
+            if proposal_tuple not in proposals:
+                proposals.add(proposal_tuple)
+                logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
+            else:
+                logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
-        if len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
-            select_winner_and_award(client)
+        select_winner_and_award(client)
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
