@@ -71,7 +71,7 @@ def charge_battery(client):
     }
 
     client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-
+    logger.info(f"{NAME} published den Beginn des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
     while roboter_battery < 100:
         time.sleep(5)  # Simuliere Ladezeit
         roboter_battery += 10
@@ -86,7 +86,7 @@ def charge_battery(client):
     }
 
     client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-
+    logger.info(f"{NAME} published das Ende des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
 
 def on_cfp_message(client, userdata, msg):
     """
@@ -96,7 +96,7 @@ def on_cfp_message(client, userdata, msg):
     global last_cfp_data, register_flag
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Empfangene CfP-Daten: {cfp_data}")
+       # logger.info(f"Empfangene CfP-Daten: {cfp_data}")
         last_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
 
     except json.JSONDecodeError as e:
@@ -111,17 +111,17 @@ def on_award_message(client, userdata, msg):
     global roboter_status
     try:
         award_data = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Empfangene Award-Daten: {award_data}")
+        #logger.info(f"Empfangene Award-Daten: {award_data}")
 
         # Überprüfen, ob die notwendigen Felder vorhanden sind
         if not all(key in award_data for key in ["winner", "package_type", "estimated_time"]):
-            logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
+            #logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
             return
 
         if award_data["winner"] == NAME:
-            logger.info(f"{NAME} hat den Auftrag erhalten. Beginne Bearbeitung.")
+            #logger.info(f"{NAME} hat den Auftrag erhalten. Beginne Bearbeitung.")
             roboter_status = "busy"  # Setze Roboter auf "busy"
-            logger.info(f"Status des {NAME}: {roboter_status}.")
+            #logger.info(f"Status des {NAME}: {roboter_status}.")
             process_package(client, award_data["package_type"], award_data["estimated_time"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
@@ -137,7 +137,7 @@ def on_tick_message(client, userdata, msg):
     """
     global last_cfp_data, roboter_status, roboter_battery,register_flag
     ts_iso = msg.payload.decode("utf-8")
-    logger.info(f"status {roboter_status}")
+    #logger.info(f"status {roboter_status}")
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
@@ -169,7 +169,7 @@ def send_proposal(client, package_type, quantity, estimated_time):
         "estimated_time": estimated_time
     }
     client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-    logger.info(f"Proposal gesendet: {proposal}")
+   # logger.info(f"Proposal gesendet: {proposal}")
 
 
 
@@ -178,7 +178,7 @@ def calculate_estimated_time(package_type):
     Berechnet die geschätzte Bearbeitungszeit basierend auf dem Pakettyp.
     """
     random_time = random.randint(1, 6)  # Zufällige Zeit zwischen 1 und 6 Sekunden
-    logger.info(f"{NAME} schätzt {random_time} Sekunden für Paket Typ {package_type}.")
+    #logger.info(f"{NAME} schätzt {random_time} Sekunden für Paket Typ {package_type}.")
     return random_time
 
 
@@ -188,9 +188,9 @@ def process_package(client, package_type, package_time):
     """
     global roboter_status, roboter_battery
     try:
-        logger.info(f"{NAME} beginnt mit der Bearbeitung von Paket Typ {package_type}.")
+       # logger.info(f"{NAME} beginnt mit der Bearbeitung von Paket Typ {package_type}.")
         time.sleep(package_time)  # Simuliere Bearbeitungszeit
-        logger.info(f"{NAME} hat die Bearbeitung von Paket Typ {package_type} abgeschlossen.")
+       # logger.info(f"{NAME} hat die Bearbeitung von Paket Typ {package_type} abgeschlossen.")
 
         # Bestätigung senden
         confirmation = {
@@ -199,17 +199,17 @@ def process_package(client, package_type, package_time):
             "status": "completed"
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
-        logger.info(f"Bestätigung gesendet: {confirmation}")
+       # logger.info(f"Bestätigung gesendet: {confirmation}")
         roboter_battery -= package_time
-        logger.info(f"{NAME} AKKU= {roboter_battery}")
+       # logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"  # Roboter ist wieder bereit
-        logger.info(f"Status des {NAME}: {roboter_status}.")
+       # logger.info(f"Status des {NAME}: {roboter_status}.")
 
         data = {
             "battery": roboter_battery,
         }
         client.publish(DATA_TOPIC, json.dumps(data))
-        logger.info(f"{NAME} Daten veröffentlicht: {data}")
+        #logger.info(f"{NAME} Daten veröffentlicht: {data}")
 
 
     except Exception as e:
