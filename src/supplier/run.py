@@ -230,7 +230,7 @@ def main():
 
     mqtt.subscribe(ROBOT_STATUS_TOPIC)
     mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_charging_status)
-    logger.info(f"{mqtt.name} subscribed to Robot Charging Topic: {ROBOT_STATUS_TOPIC}")
+    logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
 
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
