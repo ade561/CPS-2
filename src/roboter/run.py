@@ -14,7 +14,8 @@ DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
 CFP_TOPIC = os.environ.get('CFP_TOPIC')  # CfP-Thema
 PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
 ROBOT_PROPOSAL_TOPIC = os.environ.get('ROBOTER_PROPOSAL_TOPIC')
-ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')  # Thema für Angebote
+ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')
+ROBOT_STATUS_TOPIC = os.environ.get('ROBOT_STATUS_TOPIC')
 AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
 TICK_TOPIC = "tickgen/tick"
 
@@ -34,19 +35,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(NAME)
 
-def charge_battery():
+def register_robot(client):
+    """
+    Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
+    """
+    global register_flag, roboter_status
+
+    # Registrierungsdaten
+    register_data = {"name": NAME}
+    client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
+    logger.info(f"{NAME} hat sich erfolgreich beim Supplier registriert.")
+
+    # Initialer Status
+    status_data = {
+        "name": NAME,
+        "status": roboter_status  # Initialstatus: "ready"
+    }
+    client.publish(ROBOT_STATUS_TOPIC, json.dumps(status_data))
+    logger.info(f"Initialer Status veröffentlicht: {status_data}")
+
+    # Registrierung als abgeschlossen markieren
+    register_flag = True
+
+def charge_battery(client):
     """
     Simuliert das Aufladen des Roboters.
     """
     global roboter_battery, roboter_status
     roboter_status = "charging"
     logger.info(f"{NAME} beginnt mit dem Aufladen des Akkus.")
+
+    charging_data = {
+        "name": NAME,
+        "status": roboter_status
+    }
+
+    client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
+
     while roboter_battery < 100:
-        time.sleep(1)  # Simuliere Ladezeit
+        time.sleep(5)  # Simuliere Ladezeit
         roboter_battery += 10
+        roboter_battery = min(roboter_battery, 100)
         logger.info(f"{NAME} lädt auf... Akku: {roboter_battery}%")
     roboter_status = "ready"
     logger.info(f"{NAME} Akku vollständig aufgeladen. Status: {roboter_status}.")
+    
+    charging_data = {
+        "name": NAME,
+        "status": roboter_status
+    }
+
+    client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
 
 
 def on_cfp_message(client, userdata, msg):
@@ -59,12 +98,6 @@ def on_cfp_message(client, userdata, msg):
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"Empfangene CfP-Daten: {cfp_data}")
         last_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
-
-        if register_flag == False:
-            register_data = {"name":NAME}
-            client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
-            logger.info(f"{NAME} meldet registriert sich beim Supplier")
-            register_flag = True
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der CfP-Nachricht: {e}")
@@ -101,36 +134,29 @@ def on_tick_message(client, userdata, msg):
     Callback für Tick-Nachrichten.
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
-    global last_cfp_data, roboter_status, roboter_battery
+    global last_cfp_data, roboter_status, roboter_battery,register_flag
     ts_iso = msg.payload.decode("utf-8")
-    logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
-
+    logger.info(f"status {roboter_status}")
+    if register_flag == False:
+        register_robot(client)
     # Akku prüfen
     if roboter_battery < 20:
         logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
-        charge_battery()
+        charge_battery(client)
         return  # Kein Proposal senden, wenn der Akku geladen wird.
 
     if last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = last_cfp_data.get("package_type")
-        priority = last_cfp_data.get("priority", "mittel")
-        quantity = last_cfp_data.get("quantity", 1)
-
-        data = {
-            "battery": roboter_battery,
-            "timestamp": ts_iso
-        }
-        client.publish(DATA_TOPIC, json.dumps(data))
-        logger.info(f"{NAME} Daten veröffentlicht: {data}")
+        quantity = last_cfp_data.get("quantity")
 
         # Berechne die Bearbeitungszeit und sende ein Proposal
         estimated_time = calculate_estimated_time(package_type)
-        send_proposal(client, package_type, priority, quantity, estimated_time)
+        send_proposal(client, package_type, quantity, estimated_time)
 
 
 
 
-def send_proposal(client, package_type, priority, quantity, estimated_time):
+def send_proposal(client, package_type, quantity, estimated_time):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
@@ -138,7 +164,6 @@ def send_proposal(client, package_type, priority, quantity, estimated_time):
     proposal = {
         "name": NAME,
         "package_type": package_type,
-        "priority": priority,
         "quantity": quantity,
         "estimated_time": estimated_time
     }
@@ -179,6 +204,14 @@ def process_package(client, package_type, package_time):
         logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"  # Roboter ist wieder bereit
         logger.info(f"Status des {NAME}: {roboter_status}.")
+
+        data = {
+            "battery": roboter_battery,
+        }
+        client.publish(DATA_TOPIC, json.dumps(data))
+        logger.info(f"{NAME} Daten veröffentlicht: {data}")
+
+
     except Exception as e:
         logger.error(f"Fehler bei der Bearbeitung des Pakets: {e}")
 
@@ -192,6 +225,9 @@ def main():
     logger.info(f"Initializing MQTT client with name: {NAME}")
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
 
+
+    logger.info(f"STATUS_TOPIC: {ROBOT_STATUS_TOPIC}")
+    logger.info(f"ROBOT_REGISTER_TOPIC: {ROBOT_REGISTER_TOPIC}")
     # CfP-Topic abonnieren
     mqtt.subscribe(CFP_TOPIC)
     mqtt.subscribe_with_callback(CFP_TOPIC, on_cfp_message)

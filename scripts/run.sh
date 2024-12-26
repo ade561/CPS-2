@@ -40,6 +40,7 @@ docker run -d --net=cps-net \
   -e CFP_TOPIC='supplier/1/cfp' \
   -e ROBOTER_PROPOSAL_TOPIC='roboter/1/proposal' \
   -e ROBOTER_REGISTER_TOPIC='roboter/1/register' \
+  -e ROBOT_STATUS_TOPIC='roboter/1/status' \
   --name roboter_1 roboter:0.1
 
 docker run -d --net=cps-net \
@@ -49,6 +50,7 @@ docker run -d --net=cps-net \
   -e CFP_TOPIC='supplier/1/cfp' \
   -e ROBOTER_PROPOSAL_TOPIC='roboter/2/proposal' \
   -e ROBOTER_REGISTER_TOPIC='roboter/2/register' \
+  -e ROBOT_STATUS_TOPIC='roboter/2/status' \
   --name roboter_2 roboter:0.1
 
 

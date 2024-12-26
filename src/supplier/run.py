@@ -27,28 +27,51 @@ ROBOTER_PROPOSAL_TOPIC = 'roboter/+/proposal' # Proposals-Thema
 AWARD_TOPIC = "supplier/1/award"  # Thema für Gewinner
 PROCESSED_TOPIC = 'roboter/+/processed'  # Thema für Bearbeitungsbestätigungen
 ROBOTER_REGISTER_TOPIC='roboter/+/register'
+ROBOT_STATUS_TOPIC='roboter/+/status'
 
 # Variablen
 supplier_package_type_1 = int(os.environ.get('PACKAGE_TYPE_1_UNIT', 100))
 supplier_package_type_2 = int(os.environ.get('PACKAGE_TYPE_2_UNIT', 100))
 tick_counter_A = 0
 tick_counter_B = 0
-valid_priorities = ["leicht", "mittel", "schwer"]
+random_quantity = 0
+valid_priorities = ["express", "standard", "post"]
 proposals = []  # Liste der empfangenen Angebote
 registrated_robots = set()
+robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 
-def call_for_proposals(client, cfp_topic, package_type, priority, quantity=1):
+
+
+def on_robot_charging_status(client, userdata, msg):
+    """
+    Callback für Ladezustandsnachrichten von Robotern.
+    Aktualisiert den Zustand der Roboter.
+    """
+    global robot_statuses
+
+    try:
+        charging_data = json.loads(msg.payload.decode("utf-8"))
+        robot_name = charging_data.get("name")
+        status = charging_data.get("status")
+
+        if robot_name and status:
+            robot_statuses[robot_name] = status
+            logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
+        else:
+            logger.warning(f"Ungültige Ladezustandsdaten empfangen: {charging_data}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Decodieren der Ladezustandsnachricht: {e}")
+
+
+
+#TODO Proposal sollte sich aus prio, quantity zusammensetzen dass ist der Preis den der Supplier anschaut
+def call_for_proposals(client, cfp_topic, package_type, quantity):
     """
     Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
     """
-    if priority not in valid_priorities:
-        logger.warning(f"Ungültige Priorität '{priority}' gesetzt. Standard: 'mittel'")
-        priority = "mittel"
-
     cfp_data = {
         "package_type": package_type,
         "quantity": quantity,
-        "priority": priority
     }
 
     client.publish(cfp_topic, json.dumps(cfp_data))
@@ -58,7 +81,14 @@ def on_message_proposals(client, userdata, msg):
     global proposals,registrated_robots
     try:
         counter = 0
-        while  counter < len(registrated_robots):
+        available_robots = 0
+        all_values = robot_statuses.values()
+        logger.info(f"Roboter Statuses: {all_values}")
+        for value in all_values:
+            if value == "ready":
+                available_robots += 1
+
+        while  counter < available_robots:
             proposal = json.loads(msg.payload.decode("utf-8"))
             logger.info(f"Proposal empfangen: {proposal}")
             proposals.append(proposal)
@@ -73,16 +103,17 @@ def on_processed_message(client, userdata, msg):
     Callback für Bearbeitungsbestätigungen von Robotern.
     Reduziert den Lagerbestand.
     """
-    global supplier_package_type_1, supplier_package_type_2
+    global supplier_package_type_1, supplier_package_type_2,random_quantity
     try:
         processed_data = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
+        logger.info(f"random_quantity: {random_quantity}")
 
         package_type = processed_data.get("package_type")
-        if package_type == 1:
-            supplier_package_type_1 -= 1
-        elif package_type == 2:
-            supplier_package_type_2 -= 1
+        if package_type == 1 and supplier_package_type_1 > 0:
+            supplier_package_type_1 -= random_quantity
+        elif package_type == 2 and supplier_package_type_1 > 0:
+            supplier_package_type_2 -= random_quantity
 
         #logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
@@ -115,20 +146,20 @@ def select_winner_and_award(client):
     proposals = []
 
 def on_message_tick(client, userdata, msg):
-    """
-    Callback für Tick-Nachrichten. Sendet Anfragen an Roboter, wenn Pakete verfügbar sind.
-    """
-    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, valid_priorities
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses
 
     ts_iso = msg.payload.decode("utf-8")
-    #logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
-    random_index = random.randint(0, 2)
+    # Überprüfen, ob mindestens ein Roboter "ready" ist
+    if not any(status == "ready" for status in robot_statuses.values()):
+        logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
+        return
+
     random_package = 1 if random.random() < 0.5 else 2
-    weight_class = valid_priorities[random_index]
 
     if supplier_package_type_1 > 0 and random_package == 1:
-        call_for_proposals(client, CFP_TOPIC, 1, weight_class)
+        random_quantity = random.randint(1, min(4, supplier_package_type_1))
+        call_for_proposals(client, CFP_TOPIC, random_package, random_quantity)
     elif supplier_package_type_1 <= 0 and random_package == 1:
         if tick_counter_A >= 10:
             tick_counter_A = 0
@@ -138,7 +169,8 @@ def on_message_tick(client, userdata, msg):
             tick_counter_A += 1
 
     if supplier_package_type_2 > 0 and random_package == 2:
-        call_for_proposals(client, CFP_TOPIC, 2, weight_class)
+        random_quantity = random.randint(1, min(4, supplier_package_type_2))
+        call_for_proposals(client, CFP_TOPIC, random_package, random_quantity)
     elif supplier_package_type_2 <= 0 and random_package == 2:
         if tick_counter_B >= 10:
             tick_counter_B = 0
@@ -153,7 +185,6 @@ def on_message_tick(client, userdata, msg):
         "timestamp": ts_iso
     }
     client.publish(DATA_TOPIC, json.dumps(data))
-    logger.info(f"Bestand veröffentlicht: {data}")
 
 
 def on_registration(client, userdata, msg):
@@ -182,15 +213,27 @@ def main():
 
     mqtt.subscribe(TICK_TOPIC)
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
+    logger.info(f"{mqtt.name} subscribed to Robot tick Topic: {TICK_TOPIC}")
+
 
     mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
+    logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOTER_REGISTER_TOPIC}")
+
+
+    mqtt.subscribe(ROBOT_STATUS_TOPIC)
+    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_charging_status)
+    logger.info(f"{mqtt.name} subscribed to Robot Charging Topic: {ROBOT_STATUS_TOPIC}")
+
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
+    logger.info(f"{mqtt.name} subscribed to Robot proposal Topic: {ROBOTER_PROPOSAL_TOPIC}")
 
     mqtt.subscribe(PROCESSED_TOPIC)
     mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
+    logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
+
 
     try:
         logger.info("Starting MQTT loop...")
