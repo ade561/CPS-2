@@ -137,7 +137,7 @@ def on_tick_message(client, userdata, msg):
     """
     global last_cfp_data, roboter_status, roboter_battery,register_flag
     ts_iso = msg.payload.decode("utf-8")
-    #logger.info(f"status {roboter_status}")
+    logger.info(f"{NAME}: status {roboter_status} und Akku={roboter_battery}")
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
