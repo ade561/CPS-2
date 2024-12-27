@@ -135,10 +135,10 @@ def calculate_score(proposal):
     Ein höherer Score bedeutet ein besseres Proposal.
     """
     # Gewichtungen
-    transport_weight = 1.0       # Höchste Priorität
-    battery_weight = 0.5         # Zweithöchste Priorität
-    battery_cost_weight = 0.5    # Gleiche Priorität wie Batterie
-    estimated_time_weight = 0.2  # Niedrigste Priorität
+    transport_weight = 0.3       # Höchste Priorität
+    battery_weight = 0.2         # Zweithöchste Priorität
+    battery_cost_weight = 0.2    # Gleiche Priorität wie Batterie
+    estimated_time_weight = 0.3  # Niedrigste Priorität
 
     # Berechnung des Scores (alle positiv gewichtet)
     transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser

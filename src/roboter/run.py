@@ -99,7 +99,7 @@ def on_cfp_message(client, userdata, msg):
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         if cfp_data != last_cfp_data:
-            logger.info(f"Empfangene CfP-Daten: {cfp_data}")
+            logger.info(f"\nEmpfangene CfP-Daten: {cfp_data}")
             last_cfp_data = current_cfp_data
             current_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
     except json.JSONDecodeError as e:
@@ -149,8 +149,8 @@ def on_tick_message(client, userdata, msg):
         charge_battery(client)
         return  # Kein Proposal senden, wenn der Akku geladen wird.
 
-    logger.info(f"Current CFP Data: {current_cfp_data}.")
-    logger.info(f"Last CFP Data: {last_cfp_data}.")
+    #logger.info(f"Current CFP Data: {current_cfp_data}.")
+    #logger.info(f"Last CFP Data: {last_cfp_data}.")
     if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = current_cfp_data.get("package_type")
         send_proposal(client,package_type)

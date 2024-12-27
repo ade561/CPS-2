@@ -31,7 +31,6 @@ docker run -d --net=cps-net \
   -e PACKAGE_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
 
-
 echo "Starting Robots"
 docker run -d --net=cps-net \
   -e EC_NAME='roboter_1' \
@@ -53,13 +52,15 @@ docker run -d --net=cps-net \
   -e ROBOT_STATUS_TOPIC='roboter/2/status' \
   --name roboter_2 roboter:0.1
 
-
-# docker run -d --net=cps-net \
-#   -e EC_NAME='roboter_3' \
-#   -e EC_MQTT_TOPIC='roboter/3/data' \
-#   -e PROCESSED_TOPIC='roboter/3/processed' \
-#   -e ROBOTER_TYPE=1 \
-#   --name roboter_3 roboter:0.1
+docker run -d --net=cps-net \
+  -e EC_NAME='roboter_3' \
+  -e EC_MQTT_TOPIC='roboter/3/data' \
+  -e PROCESSED_TOPIC='roboter/3/processed' \
+  -e CFP_TOPIC='supplier/1/cfp' \
+  -e ROBOTER_PROPOSAL_TOPIC='roboter/3/proposal' \
+  -e ROBOTER_REGISTER_TOPIC='roboter/3/register' \
+  -e ROBOT_STATUS_TOPIC='roboter/3/status' \
+  --name roboter_3 roboter:0.1
 
 # docker run -d --net=cps-net \
 #   -e EC_NAME='roboter_4' \
