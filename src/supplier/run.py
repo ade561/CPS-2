@@ -86,7 +86,7 @@ def on_message_proposals(client, userdata, msg):
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
-        proposal_tuple = (proposal.get("name"), proposal.get("package_type"), proposal.get("estimated_time"))
+        proposal_tuple = (proposal.get("name"), proposal.get("transport_type"),proposal.get("battery"),proposal.get("battery_cost") ,proposal.get("estimated_time"))
 
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
@@ -128,22 +128,51 @@ def on_processed_message(client, userdata, msg):
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
 
 
+def calculate_score(proposal):
+    """
+    Berechnet den Score für ein Proposal basierend auf gewichteten Kriterien.
+    Ein höherer Score bedeutet ein besseres Proposal.
+    """
+    # Gewichtungen
+    transport_weight = 1.0       # Höchste Priorität
+    battery_weight = 0.5         # Zweithöchste Priorität
+    battery_cost_weight = 0.5    # Gleiche Priorität wie Batterie
+    estimated_time_weight = 0.2  # Niedrigste Priorität
+
+    # Berechnung des Scores (alle positiv gewichtet)
+    transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
+    battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
+    battery_cost_score = -battery_cost_weight * proposal[3] # Niedrigere Kosten = besser
+    estimated_time_score = -estimated_time_weight * proposal[4]  # Kürzere Zeit = besser
+
+    # Gesamtscore
+    score = (
+        transport_score +
+        battery_score +
+        battery_cost_score +
+        estimated_time_score
+    )
+    
+    return abs(score)
+
+
+
 def select_winner_and_award(client):
-    """
-    Wählt den besten Roboter aus den empfangenen Proposals aus und sendet eine Award-Nachricht.
-    """
     global proposals
 
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
         return
 
-    # Wähle den Roboter mit der geringsten geschätzten Bearbeitungszeit
-    winner = min(proposals, key=lambda x: x[2])  # Nutze die Position des "estimated_time" Werts im Tupel
+    # Gewinner mit dem höchsten Score auswählen
+    winner = max(proposals, key=calculate_score)
+
     award_message = {
         "winner": winner[0],          # Name
         "package_type": winner[1],    # Pakettyp
-        "estimated_time": winner[2]   # Bearbeitungszeit
+        "battery": winner[2],         # Batterie
+        "battery_cost": winner[3],    # Batteriekosten
+        "estimated_time": winner[4]   # Bearbeitungszeit
     }
 
     client.publish(AWARD_TOPIC, json.dumps(award_message))
@@ -151,6 +180,7 @@ def select_winner_and_award(client):
 
     # Leere das Set der Proposals nach der Vergabe
     proposals.clear()
+
 
 
 def on_message_tick(client, userdata, msg):

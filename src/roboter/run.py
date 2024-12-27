@@ -25,6 +25,7 @@ current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
+transport_type = {"express","standard"}
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -151,26 +152,38 @@ def on_tick_message(client, userdata, msg):
     logger.info(f"Current CFP Data: {current_cfp_data}.")
     logger.info(f"Last CFP Data: {last_cfp_data}.")
     if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
-        package_type = current_cfp_data.get("package_type")
-        quantity = current_cfp_data.get("quantity")
-        send_proposal(client, package_type, quantity)
+        send_proposal(client)
 
 
 
-
-def send_proposal(client, package_type, quantity):
+def send_proposal(client):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
-    global roboter_status
-    proposal = {
-        "name": NAME,
-        "package_type": package_type,
-        "quantity": quantity,
-        "estimated_time": random.randint(1, 6)
-    }
-    client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-    logger.info(f"Proposal gesendet: {proposal}")
+    global roboter_status,roboter_battery,transport_type
+
+    transmission_type = transport_type[0 if random.random() < 0.35 else 1]
+
+    if transmission_type == "express":
+        proposal = {
+            "name": NAME,
+            "transport_type":2,
+            "battery": roboter_battery,
+            "battery_cost": random.randint(8, 20),
+            "estimated_time": random.randint(1, 4)
+        }
+        client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
+        logger.info(f"Proposal gesendet: {proposal}")
+    else:
+        proposal = {
+            "name": NAME,
+            "transport_type":1,
+            "battery": roboter_battery,
+            "battery_cost": random.randint(4, 15),
+            "estimated_time": random.randint(3, 6)
+        }
+        client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
+        logger.info(f"Proposal gesendet: {proposal}")
 
 
 def process_package(client, package_type, package_time):
