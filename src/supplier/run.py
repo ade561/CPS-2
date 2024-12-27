@@ -86,7 +86,7 @@ def on_message_proposals(client, userdata, msg):
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
-        proposal_tuple = (proposal.get("name"), proposal.get("transport_type"),proposal.get("battery"),proposal.get("battery_cost") ,proposal.get("estimated_time"))
+        proposal_tuple = (proposal.get("name"),proposal.get("transport_type"),proposal.get("battery"),proposal.get("battery_cost") ,proposal.get("estimated_time"),proposal.get("package_type"))
 
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
@@ -98,7 +98,8 @@ def on_message_proposals(client, userdata, msg):
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
         if len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
-            select_winner_and_award(client)
+            package_type = proposal.get("package_type")
+            select_winner_and_award(client,package_type)
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
@@ -157,7 +158,7 @@ def calculate_score(proposal):
 
 
 
-def select_winner_and_award(client):
+def select_winner_and_award(client,package_type):
     global proposals
 
     if not proposals:
@@ -169,10 +170,11 @@ def select_winner_and_award(client):
 
     award_message = {
         "winner": winner[0],          # Name
-        "package_type": winner[1],    # Pakettyp
+        "transport_type": winner[1],  # Versandtyp
         "battery": winner[2],         # Batterie
         "battery_cost": winner[3],    # Batteriekosten
-        "estimated_time": winner[4]   # Bearbeitungszeit
+        "estimated_time": winner[4],   # Bearbeitungszeit
+        "package_type": package_type
     }
 
     client.publish(AWARD_TOPIC, json.dumps(award_message))
