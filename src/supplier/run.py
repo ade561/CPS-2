@@ -86,7 +86,7 @@ def on_message_proposals(client, userdata, msg):
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
-        proposal_tuple = (proposal["name"], proposal["package_type"], proposal["quantity"])
+        proposal_tuple = (proposal.get("name"), proposal.get("package_type"), proposal.get("estimated_time"))
 
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
