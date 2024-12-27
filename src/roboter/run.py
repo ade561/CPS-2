@@ -21,6 +21,7 @@ TICK_TOPIC = "tickgen/tick"
 
 # Variablen
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
+current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
@@ -93,12 +94,13 @@ def on_cfp_message(client, userdata, msg):
     Callback für CfP-Nachrichten vom Supplier.
     Speichert die empfangenen CfP-Daten.
     """
-    global last_cfp_data, register_flag
+    global current_cfp_data,last_cfp_data, register_flag
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
-       # logger.info(f"Empfangene CfP-Daten: {cfp_data}")
-        last_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
-
+        if cfp_data != last_cfp_data:
+            logger.info(f"Empfangene CfP-Daten: {cfp_data}")
+            last_cfp_data = current_cfp_data
+            current_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der CfP-Nachricht: {e}")
 
@@ -111,11 +113,11 @@ def on_award_message(client, userdata, msg):
     global roboter_status
     try:
         award_data = json.loads(msg.payload.decode("utf-8"))
-        #logger.info(f"Empfangene Award-Daten: {award_data}")
+        logger.info(f"Empfangene Award-Daten: {award_data}")
 
         # Überprüfen, ob die notwendigen Felder vorhanden sind
         if not all(key in award_data for key in ["winner", "package_type", "estimated_time"]):
-            #logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
+            logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
             return
 
         if award_data["winner"] == NAME:
@@ -136,7 +138,7 @@ def on_tick_message(client, userdata, msg):
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
     global last_cfp_data, roboter_status, roboter_battery,register_flag
-    ts_iso = msg.payload.decode("utf-8")
+    #ts_iso = msg.payload.decode("utf-8")
     logger.info(f"{NAME}: status {roboter_status} und Akku={roboter_battery}")
     if register_flag == False:
         register_robot(client)
@@ -146,18 +148,17 @@ def on_tick_message(client, userdata, msg):
         charge_battery(client)
         return  # Kein Proposal senden, wenn der Akku geladen wird.
 
-    if last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
-        package_type = last_cfp_data.get("package_type")
-        quantity = last_cfp_data.get("quantity")
-
-        # Berechne die Bearbeitungszeit und sende ein Proposal
-        estimated_time = calculate_estimated_time(package_type)
-        send_proposal(client, package_type, quantity, estimated_time)
-
+    logger.info(f"Current CFP Data: {current_cfp_data}.")
+    logger.info(f"Last CFP Data: {last_cfp_data}.")
+    if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
+        package_type = current_cfp_data.get("package_type")
+        quantity = current_cfp_data.get("quantity")
+        send_proposal(client, package_type, quantity)
 
 
 
-def send_proposal(client, package_type, quantity, estimated_time):
+
+def send_proposal(client, package_type, quantity):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
@@ -166,20 +167,10 @@ def send_proposal(client, package_type, quantity, estimated_time):
         "name": NAME,
         "package_type": package_type,
         "quantity": quantity,
-        "estimated_time": estimated_time
+        "estimated_time": random.randint(1, 6)
     }
     client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-   # logger.info(f"Proposal gesendet: {proposal}")
-
-
-
-def calculate_estimated_time(package_type):
-    """
-    Berechnet die geschätzte Bearbeitungszeit basierend auf dem Pakettyp.
-    """
-    random_time = random.randint(1, 6)  # Zufällige Zeit zwischen 1 und 6 Sekunden
-    #logger.info(f"{NAME} schätzt {random_time} Sekunden für Paket Typ {package_type}.")
-    return random_time
+    logger.info(f"Proposal gesendet: {proposal}")
 
 
 def process_package(client, package_type, package_time):
@@ -199,7 +190,7 @@ def process_package(client, package_type, package_time):
             "status": "completed"
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
-       # logger.info(f"Bestätigung gesendet: {confirmation}")
+        logger.info(f"Bestätigung gesendet: {confirmation}")
         roboter_battery -= package_time
        # logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"  # Roboter ist wieder bereit
