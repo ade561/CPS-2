@@ -73,7 +73,7 @@ def charge_battery(client):
     }
 
     client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-    logger.info(f"{NAME} published den Beginn des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
+    logger.info(f"{NAME} published den Beginn des Ladevorgang auf {ROBOT_STATUS_TOPIC}, da aktueller AKKU={roboter_battery} beträgt")
     while roboter_battery < 100:
         time.sleep(5)  # Simuliere Ladezeit
         roboter_battery += 10
@@ -88,7 +88,7 @@ def charge_battery(client):
     }
 
     client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-    logger.info(f"{NAME} published das Ende des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
+    #logger.info(f"{NAME} published das Ende des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
 
 def on_cfp_message(client, userdata, msg):
     """
@@ -99,7 +99,7 @@ def on_cfp_message(client, userdata, msg):
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         if cfp_data != last_cfp_data:
-            logger.info(f"\nEmpfangene CfP-Daten: {cfp_data}")
+            #logger.info(f"\nEmpfangene CfP-Daten: {cfp_data}")
             last_cfp_data = current_cfp_data
             current_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
     except json.JSONDecodeError as e:
@@ -122,9 +122,15 @@ def on_award_message(client, userdata, msg):
             return
 
         if award_data["winner"] == NAME:
-            #logger.info(f"{NAME} hat den Auftrag erhalten. Beginne Bearbeitung.")
             roboter_status = "busy"  # Setze Roboter auf "busy"
-            #logger.info(f"Status des {NAME}: {roboter_status}.")
+
+            current_status = {
+                "name": NAME,
+                "status": roboter_status
+            }
+            client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
+
+            logger.info(f"aktueller Status gepublished: {roboter_status}")
             process_package(client, award_data["package_type"],award_data["battery_cost"],award_data["estimated_time"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
@@ -139,8 +145,7 @@ def on_tick_message(client, userdata, msg):
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
     global last_cfp_data, roboter_status, roboter_battery,register_flag
-    #ts_iso = msg.payload.decode("utf-8")
-    logger.info(f"{NAME}: status {roboter_status} und Akku={roboter_battery}")
+    
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
@@ -149,8 +154,6 @@ def on_tick_message(client, userdata, msg):
         charge_battery(client)
         return  # Kein Proposal senden, wenn der Akku geladen wird.
 
-    #logger.info(f"Current CFP Data: {current_cfp_data}.")
-    #logger.info(f"Last CFP Data: {last_cfp_data}.")
     if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = current_cfp_data.get("package_type")
         send_proposal(client,package_type)
@@ -175,7 +178,7 @@ def send_proposal(client,package_type):
             "estimated_time": random.randint(1, 4)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-        logger.info(f"Proposal gesendet: {proposal}")
+        #logger.info(f"Proposal gesendet: {proposal}")
     else:
         proposal = {
             "name": NAME,
@@ -186,7 +189,7 @@ def send_proposal(client,package_type):
             "estimated_time": random.randint(3, 6)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-        logger.info(f"Proposal gesendet: {proposal}")
+        #logger.info(f"Proposal gesendet: {proposal}\n")
 
 
 def process_package(client, package_type,battery_cost ,package_time):
@@ -208,9 +211,19 @@ def process_package(client, package_type,battery_cost ,package_time):
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
         roboter_battery -=  battery_cost
-        logger.info(f"{NAME} AKKU= {roboter_battery}\n")
-        roboter_status = "ready"  # Roboter ist wieder bereit
-       # logger.info(f"Status des {NAME}: {roboter_status}.")
+        logger.info(f"{NAME} AKKU= {roboter_battery}")
+        roboter_status = "ready"
+
+        current_status = {
+            "name": NAME,
+            "status": roboter_status
+        }
+
+
+        client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
+        logger.info(f"aktueller Status gepublished: {roboter_status}")
+
+        logger.info(f"Status des {NAME}: {roboter_status}\n.")
 
         data = {
             "battery": roboter_battery,

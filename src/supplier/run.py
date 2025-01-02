@@ -42,7 +42,7 @@ robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "chargin
 
 
 
-def on_robot_charging_status(client, userdata, msg):
+def on_robot_status(client, userdata, msg):
     """
     Callback für Ladezustandsnachrichten von Robotern.
     Aktualisiert den Zustand der Roboter.
@@ -57,6 +57,7 @@ def on_robot_charging_status(client, userdata, msg):
         if robot_name and status:
             robot_statuses[robot_name] = status
             logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
+            logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
         else:
             logger.warning(f"Ungültige Ladezustandsdaten empfangen: {charging_data}")
     except json.JSONDecodeError as e:
@@ -135,10 +136,10 @@ def calculate_score(proposal):
     Ein höherer Score bedeutet ein besseres Proposal.
     """
     # Gewichtungen
-    transport_weight = 0.3       # Höchste Priorität
-    battery_weight = 0.2         # Zweithöchste Priorität
-    battery_cost_weight = 0.2    # Gleiche Priorität wie Batterie
-    estimated_time_weight = 0.3  # Niedrigste Priorität
+    transport_weight = 0.25      
+    battery_weight = 0.25        
+    battery_cost_weight = 0.25    
+    estimated_time_weight = 0.25  
 
     # Berechnung des Scores (alle positiv gewichtet)
     transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
@@ -262,7 +263,7 @@ def main():
 
 
     mqtt.subscribe(ROBOT_STATUS_TOPIC)
-    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_charging_status)
+    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
     logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
 
 
