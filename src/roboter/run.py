@@ -26,6 +26,8 @@ roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
 transport_type = ["express","standard"]
+current_storage = "storage_1"
+current_supplier = "supplier_1"
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -131,7 +133,7 @@ def on_award_message(client, userdata, msg):
             client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
 
             logger.info(f"aktueller Status gepublished: {roboter_status}")
-            process_package(client, award_data["package_type"],award_data["battery_cost"],award_data["estimated_time"])
+            process_package(client, award_data["package_type"],award_data["battery_cost"],award_data["estimated_time"],award_data["timestamp"],award_data["transport_type"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
     except json.JSONDecodeError as e:
@@ -192,7 +194,7 @@ def send_proposal(client,package_type):
         #logger.info(f"Proposal gesendet: {proposal}\n")
 
 
-def process_package(client, package_type,battery_cost ,package_time):
+def process_package(client, package_type,battery_cost ,package_time,package_timestamp,transport_type):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
@@ -206,7 +208,11 @@ def process_package(client, package_type,battery_cost ,package_time):
         confirmation = {
             "name": NAME,
             "package_type": package_type,
-            "status": "completed"
+            "transport_type": transport_type,
+            "status": "completed",
+            "storage": current_storage,
+            "supplier": current_supplier,
+            "timestamp": package_timestamp
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")

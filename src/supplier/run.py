@@ -183,7 +183,8 @@ def select_winner_and_award(client,package_type):
         "battery": winner[2],         # Batterie
         "battery_cost": winner[3],    # Batteriekosten
         "estimated_time": winner[4],   # Bearbeitungszeit
-        "package_type": package_type
+        "package_type": package_type,
+        "timestamp": time.time()     # Zeitstempel
     }
     client.publish(AWARD_TOPIC, json.dumps(award_message))
     logger.info(f"Award vergeben an: {award_message}\n")

@@ -12,14 +12,12 @@ docker run -d --net=cps-net --name tick_gen tick_gen:0.1
 echo "Starting dashboard..."
 docker run -d -p 127.0.0.1:1880:1880 --net=cps-net --name dashboard dashboard:0.1
 
-# echo "Starting Storage_1"
-# docker run -d --net=cps-net \
-#   -e EC_NAME='storage_1' \
-#   -e EC_MQTT_TOPIC='storage/1/data' \
-#   -e STORAGE_REQUEST_TOPIC='storage/1/request' \
-#   -e PACKAGE_TYPE_1_COUNT=0 \
-#   -e PACKAGE_TYPE_2_COUNT=0 \
-#   --name storage_1 storage:0.1
+echo "Starting Storage_1"
+docker run -d --net=cps-net \
+  -e EC_NAME='storage_1' \
+  -e EC_MQTT_TOPIC='storage/1/data' \
+  -e ROBOTER_PROCESS_TOPICS='roboter/1/processed,roboter/2/processed,roboter/3/processed,roboter/4/processed' \
+  --name storage_1 storage:0.1
 
 echo "Starting Supplier_1"
 docker run -d --net=cps-net \
