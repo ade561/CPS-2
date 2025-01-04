@@ -39,6 +39,7 @@ valid_priorities = ["express", "standard", "post"]
 proposals = set()  # Liste der empfangenen Angebote
 registrated_robots = set()
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
+cfp_flag = False
 
 
 
@@ -65,14 +66,14 @@ def on_robot_status(client, userdata, msg):
 
 
 
-#TODO Proposal sollte sich aus prio, quantity zusammensetzen dass ist der Preis den der Supplier anschaut
-def call_for_proposals(client, cfp_topic, package_type, quantity):
+def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
     """
     Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
     """
     cfp_data = {
         "package_type": package_type,
         "quantity": quantity,
+        "timestamp": timestamp
     }
 
     client.publish(cfp_topic, json.dumps(cfp_data))
@@ -87,7 +88,14 @@ def on_message_proposals(client, userdata, msg):
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
-        proposal_tuple = (proposal.get("name"),proposal.get("transport_type"),proposal.get("battery"),proposal.get("battery_cost") ,proposal.get("estimated_time"),proposal.get("package_type"))
+        proposal_tuple = (
+            proposal.get("name"),
+            proposal.get("transport_type"),
+            proposal.get("battery"),
+            proposal.get("battery_cost") ,
+            proposal.get("estimated_time"),
+            proposal.get("package_type")
+            )
 
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
@@ -160,7 +168,7 @@ def calculate_score(proposal):
 
 
 def select_winner_and_award(client,package_type):
-    global proposals
+    global proposals,cfp_flag
 
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
@@ -177,17 +185,16 @@ def select_winner_and_award(client,package_type):
         "estimated_time": winner[4],   # Bearbeitungszeit
         "package_type": package_type
     }
-
     client.publish(AWARD_TOPIC, json.dumps(award_message))
     logger.info(f"Award vergeben an: {award_message}\n")
-
+    cfp_flag = False
     # Leere das Set der Proposals nach der Vergabe
     proposals.clear()
 
 
 
 def on_message_tick(client, userdata, msg):
-    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag
 
     ts_iso = msg.payload.decode("utf-8")
 
@@ -195,30 +202,38 @@ def on_message_tick(client, userdata, msg):
     if not any(status == "ready" for status in robot_statuses.values()):
         #logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
         return
+    
+    if supplier_package_type_1 <= 0:
+            if tick_counter_A >= 10:
+                tick_counter_A = 0
+                supplier_package_type_1 = 100
+                logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
+            else:
+                tick_counter_A += 1
 
-    random_package = 1 if random.random() < 0.5 else 2
+    if supplier_package_type_2 <= 0:
+            if tick_counter_B >= 10:
+                tick_counter_B = 0
+                supplier_package_type_2 = 100
+                logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
+            else:
+                tick_counter_B += 1
 
-    if supplier_package_type_1 > 0 and random_package == 1:
-        random_quantity = random.randint(1, min(4, supplier_package_type_1))
-        call_for_proposals(client, CFP_TOPIC, random_package, random_quantity)
-    elif supplier_package_type_1 <= 0 and random_package == 1:
-        if tick_counter_A >= 10:
-            tick_counter_A = 0
-            supplier_package_type_1 = 100
-            logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
+    if cfp_flag != True:
+        if supplier_package_type_1 > 0 and supplier_package_type_2 <= 0:
+            random_package = 1
+        elif supplier_package_type_1 <= 0 and supplier_package_type_2 > 0:
+            random_package = 2
         else:
-            tick_counter_A += 1
-
-    if supplier_package_type_2 > 0 and random_package == 2:
-        random_quantity = random.randint(1, min(4, supplier_package_type_2))
-        call_for_proposals(client, CFP_TOPIC, random_package, random_quantity)
-    elif supplier_package_type_2 <= 0 and random_package == 2:
-        if tick_counter_B >= 10:
-            tick_counter_B = 0
-            supplier_package_type_2 = 100
-            logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
-        else:
-            tick_counter_B += 1
+            random_package = 1 if random.random() < 0.5 else 2
+        cfp_flag = True
+        if supplier_package_type_1 > 0 and random_package == 1:
+            random_quantity = random.randint(1, min(4, supplier_package_type_1))
+            call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
+        
+        elif supplier_package_type_2 > 0 and random_package == 2:
+            random_quantity = random.randint(1, min(4, supplier_package_type_2))
+            call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
 
     data = {
         "package_type_1": supplier_package_type_1,
