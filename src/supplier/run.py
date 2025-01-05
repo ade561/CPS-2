@@ -37,6 +37,7 @@ tick_counter_B = 0
 random_quantity = 0
 valid_priorities = ["express", "standard", "post"]
 proposals = set()  # Liste der empfangenen Angebote
+existing_names = set()  # Set für vorhandene Namen
 registrated_robots = set()
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 cfp_flag = False
@@ -57,8 +58,8 @@ def on_robot_status(client, userdata, msg):
 
         if robot_name and status:
             robot_statuses[robot_name] = status
-            logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
-            logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
+            #logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
+            #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
         else:
             logger.warning(f"Ungültige Ladezustandsdaten empfangen: {charging_data}")
     except json.JSONDecodeError as e:
@@ -81,39 +82,46 @@ def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
 
 def on_message_proposals(client, userdata, msg):
     global proposals
+    global existing_names  # Neues Set für vorhandene Namen
 
     try:
         # Proposal empfangen
         proposal = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
         proposal_tuple = (
             proposal.get("name"),
             proposal.get("transport_type"),
             proposal.get("battery"),
-            proposal.get("battery_cost") ,
+            proposal.get("battery_cost"),
             proposal.get("estimated_time"),
             proposal.get("package_type")
-            )
+        )
+        proposal_name = proposal.get("name")
 
-        # Proposal zum Set hinzufügen
-        if proposal_tuple not in proposals:
+        if proposal_tuple not in proposals and proposal_name not in existing_names:
             proposals.add(proposal_tuple)
-            logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
-            logger.info(f"aktuelle Proposals : {proposals}")
+            existing_names.add(proposal_name)
+            #logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
         else:
-            logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
+            #logger.info(f"Proposal von {proposal_name} wird ignoriert (bereits vorhanden).")
+            return 
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
         if len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
             package_type = proposal.get("package_type")
-            select_winner_and_award(client,package_type)
+            select_winner_and_award(client, package_type)
+
+            # Nach Vergabe: Proposals und Namen-Sets zurücksetzen
+            proposals.clear()
+            existing_names.clear()
+            logger.info("Proposal Set gecleared.\n")
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
     except Exception as e:
         logger.error(f"Ein unerwarteter Fehler in on_message_proposals: {e}")
+
 
 
 def on_processed_message(client, userdata, msg):
@@ -124,8 +132,8 @@ def on_processed_message(client, userdata, msg):
     global supplier_package_type_1, supplier_package_type_2,random_quantity
     try:
         processed_data = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
-       # logger.info(f"random_quantity: {random_quantity}")
+        #logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
+        #logger.info(f"random_quantity: {random_quantity}")
 
         package_type = processed_data.get("package_type")
         if package_type == 1 and supplier_package_type_1 > 0:
@@ -144,21 +152,21 @@ def calculate_score(proposal):
     Ein höherer Score bedeutet ein besseres Proposal.
     """
     # Gewichtungen
-    transport_weight = 0.25      
-    battery_weight = 0.25        
-    battery_cost_weight = 0.25    
-    estimated_time_weight = 0.25  
+    transport_weight = 0.3      
+    # battery_weight = 0.1        
+    battery_cost_weight = 0.15    
+    estimated_time_weight = 0.5  
 
     # Berechnung des Scores (alle positiv gewichtet)
     transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
-    battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
+    # battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
     battery_cost_score = -battery_cost_weight * proposal[3] # Niedrigere Kosten = besser
     estimated_time_score = -estimated_time_weight * proposal[4]  # Kürzere Zeit = besser
 
     # Gesamtscore
     score = (
         transport_score +
-        battery_score +
+        # battery_score +
         battery_cost_score +
         estimated_time_score
     )
@@ -173,7 +181,7 @@ def select_winner_and_award(client,package_type):
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
         return
-
+    logger.info(f"PROPOSALS: {proposals} LENGTH={len(proposals)}")
     # Gewinner mit dem höchsten Score auswählen
     winner = max(proposals, key=calculate_score)
 
@@ -186,10 +194,9 @@ def select_winner_and_award(client,package_type):
         "package_type": package_type
     }
     client.publish(AWARD_TOPIC, json.dumps(award_message))
-    logger.info(f"Award vergeben an: {award_message}\n")
+    logger.info(f"Award vergeben an: {award_message}")
     cfp_flag = False
-    # Leere das Set der Proposals nach der Vergabe
-    proposals.clear()
+
 
 
 

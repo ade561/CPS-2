@@ -27,9 +27,22 @@ docker run -d --net=cps-net \
   -e EC_MQTT_TOPIC='supplier/1/data' \
   -e CFP_TOPIC='supplier/1/cfp' \
   -e AWARD_TOPIC='supplier/1/award' \
+  -e TASK_CONFIRMATION_TOPIC='supplier/1/taskconfirmation' \
+  -e REGISTER_CONFIRMATION_TOPIC='supplier/1/registerconfirmation' \
   -e PACKAGE_TYPE_1_UNIT=100 \
   -e PACKAGE_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
+
+# docker run -d --net=cps-net \
+#   -e EC_NAME='supplier_2' \
+#   -e EC_MQTT_TOPIC='supplier/2/data' \
+#   -e CFP_TOPIC='supplier/2/cfp' \
+#   -e AWARD_TOPIC='supplier/2/award' \
+#   -e TASK_CONFIRMATION_TOPIC='supplier/2/taskconfirmation' \
+#   -e REGISTER_CONFIRMATION_TOPIC='supplier/2/registerconfirmation' \
+#   -e PACKAGE_TYPE_1_UNIT=100 \
+#   -e PACKAGE_TYPE_2_UNIT=100 \
+#   --name supplier_2 supplier:0.1
 
 echo "Starting Robots"
 docker run -d --net=cps-net \
