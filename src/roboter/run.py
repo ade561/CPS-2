@@ -18,6 +18,8 @@ ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')
 ROBOT_STATUS_TOPIC = os.environ.get('ROBOT_STATUS_TOPIC')
 AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
 TICK_TOPIC = "tickgen/tick"
+REKONFIG_TIMER_TOPIC = "rekonfig/time"
+RECONFIGURE_DATA = "+/+/reconfigure"
 
 # Variablen
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
@@ -25,9 +27,10 @@ current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
-transport_type = ["express","standard"]
-current_storage = "storage_1"
-current_supplier = "supplier_1"
+transport_type = ["express", "standard"]
+current_storage = os.environ.get('STORAGE')
+current_supplier = os.environ.get('SUPPLIER')
+reconfig_data = {}  # Reconfig-Daten als Feld
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -46,7 +49,11 @@ def register_robot(client):
     global register_flag, roboter_status
 
     # Registrierungsdaten
-    register_data = {"name": NAME}
+    register_data = {
+        "name": NAME,
+        "storage": current_storage,
+        "supplier": current_supplier
+    }
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
     logger.info(f"{NAME} hat sich erfolgreich beim Supplier registriert.")
 
@@ -97,7 +104,7 @@ def on_cfp_message(client, userdata, msg):
     Callback für CfP-Nachrichten vom Supplier.
     Speichert die empfangenen CfP-Daten.
     """
-    global current_cfp_data,last_cfp_data, register_flag
+    global current_cfp_data, last_cfp_data, register_flag
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         if cfp_data != last_cfp_data:
@@ -106,7 +113,6 @@ def on_cfp_message(client, userdata, msg):
             current_cfp_data = cfp_data  # CfP-Daten zwischenspeichern
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der CfP-Nachricht: {e}")
-
 
 def on_award_message(client, userdata, msg):
     """
@@ -119,7 +125,7 @@ def on_award_message(client, userdata, msg):
         logger.info(f"Empfangene Award-Daten: {award_data}")
 
         # Überprüfen, ob die notwendigen Felder vorhanden sind
-        if not all(key in award_data for key in ["winner", "package_type","transport_type", "battery","battery_cost","estimated_time"]):
+        if not all(key in award_data for key in ["winner", "package_type", "transport_type", "battery", "battery_cost", "estimated_time"]):
             logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
             return
 
@@ -133,20 +139,18 @@ def on_award_message(client, userdata, msg):
             client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
 
             logger.info(f"aktueller Status gepublished: {roboter_status}")
-            process_package(client, award_data["package_type"],award_data["battery_cost"],award_data["estimated_time"],award_data["timestamp"],award_data["transport_type"])
+            process_package(client, award_data["package_type"], award_data["battery_cost"], award_data["estimated_time"], award_data["timestamp"], award_data["transport_type"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Award-Nachricht: {e}")
-
-
 
 def on_tick_message(client, userdata, msg):
     """
     Callback für Tick-Nachrichten.
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
-    global last_cfp_data, roboter_status, roboter_battery,register_flag
+    global last_cfp_data, roboter_status, roboter_battery, register_flag
     
     if register_flag == False:
         register_robot(client)
@@ -158,23 +162,22 @@ def on_tick_message(client, userdata, msg):
 
     if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = current_cfp_data.get("package_type")
-        send_proposal(client,package_type)
+        send_proposal(client, package_type)
 
-
-
-def send_proposal(client,package_type):
+def send_proposal(client, package_type):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
-    global roboter_status,roboter_battery,transport_type
+    global roboter_status, roboter_battery, transport_type
 
     transmission_type = transport_type[0 if random.random() < 0.35 else 1]
 
     if transmission_type == "express":
         proposal = {
+            "place": current_supplier if current_supplier else current_storage,
             "name": NAME,
             "package_type": package_type,
-            "transport_type":2,
+            "transport_type": 2,
             "battery": roboter_battery,
             "battery_cost": random.randint(8, 20),
             "estimated_time": random.randint(1, 4)
@@ -183,9 +186,10 @@ def send_proposal(client,package_type):
         #logger.info(f"Proposal gesendet: {proposal}")
     else:
         proposal = {
+            "place": current_supplier if current_supplier else current_storage,
             "name": NAME,
             "package_type": package_type,
-            "transport_type":1,
+            "transport_type": 1,
             "battery": roboter_battery,
             "battery_cost": random.randint(4, 15),
             "estimated_time": random.randint(3, 6)
@@ -193,8 +197,7 @@ def send_proposal(client,package_type):
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
         #logger.info(f"Proposal gesendet: {proposal}\n")
 
-
-def process_package(client, package_type,battery_cost ,package_time,package_timestamp,transport_type):
+def process_package(client, package_type, battery_cost, package_time, package_timestamp, transport_type):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
@@ -216,7 +219,7 @@ def process_package(client, package_type,battery_cost ,package_time,package_time
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
-        roboter_battery -=  battery_cost
+        roboter_battery -= battery_cost
         logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"
 
@@ -224,7 +227,6 @@ def process_package(client, package_type,battery_cost ,package_time,package_time
             "name": NAME,
             "status": roboter_status
         }
-
 
         client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
         logger.info(f"aktueller Status gepublished: {roboter_status}")
@@ -237,12 +239,49 @@ def process_package(client, package_type,battery_cost ,package_time,package_time
         client.publish(DATA_TOPIC, json.dumps(data))
         #logger.info(f"{NAME} Daten veröffentlicht: {data}")
 
-
     except Exception as e:
         logger.error(f"Fehler bei der Bearbeitung des Pakets: {e}")
 
 
+        
+def on_reconfig_message():
+    global reconfig_data
 
+    try:
+        robot_count = 0
+        fullness_count = 0
+
+        # Iteriere über alle Einträge in reconfig_data
+        for entry in reconfig_data:
+            logger.info(f"Entries: = {entry}")
+            robot_count += entry[1]  # Addiere count_robots
+            fullness_count += entry[2]  # Addiere storage_filled
+
+        logger.info(f"Gesamtberechnete Werte: robot_count = {robot_count}, fullness_count = {fullness_count}")
+    except Exception as e:
+        logger.error(f"Fehler beim Berechnen der Reconfig-Daten: {e}")
+
+
+
+def on_reconfig_data_message(client, userdata, msg):
+    """
+    Callback für Reconfig-Daten-Nachrichten.
+    Speichert die empfangenen Daten in einer 2D-Liste.
+    """
+    global reconfig_data
+    try:
+        data = json.loads(msg.payload.decode("utf-8"))
+        name = data.get("name")
+        count_robots = data.get("count_robots", 0)
+        storage_filled = data.get("storage_filled", 0)
+        if name:
+            reconfig_data.append([name, count_robots, storage_filled])
+            logger.info(f"Reconfig-Daten gespeichert: {data}")
+            logger.info(f"Reconfig-Daten: {reconfig_data}")
+        else:
+            logger.error("Reconfig-Daten ohne Namen empfangen.")
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Decodieren der Reconfig-Daten-Nachricht: {e}")
 
 def main():
     """
@@ -251,9 +290,8 @@ def main():
     logger.info(f"Initializing MQTT client with name: {NAME}")
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
 
-
     logger.info(f"STATUS_TOPIC: {ROBOT_STATUS_TOPIC}")
-    logger.info(f"ROBOT_REGISTER_TOPIC: {ROBOT_REGISTER_TOPIC}")
+    logger.info(f"ROBOT_RE    GISTER_TOPIC: {ROBOT_REGISTER_TOPIC}")    
     # CfP-Topic abonnieren
     mqtt.subscribe(CFP_TOPIC)
     mqtt.subscribe_with_callback(CFP_TOPIC, on_cfp_message)
@@ -269,6 +307,14 @@ def main():
     mqtt.subscribe_with_callback(TICK_TOPIC, on_tick_message)
     logger.info(f"{mqtt.name} subscribed to Tick-Topic: {TICK_TOPIC}")
 
+    mqtt.subscribe(REKONFIG_TIMER_TOPIC)
+    mqtt.subscribe_with_callback(REKONFIG_TIMER_TOPIC, on_reconfig_message)
+    logger.info(f"{mqtt.name} subscribed to Tick-Topic: {REKONFIG_TIMER_TOPIC}")
+
+    mqtt.subscribe(RECONFIGURE_DATA)
+    mqtt.subscribe_with_callback(RECONFIGURE_DATA, on_reconfig_data_message)
+    logger.info(f"{mqtt.name} subscribed to Tick-Topic: {RECONFIGURE_DATA}")
+
     # Starte die MQTT-Schleife
     try:
         logger.info("Starting MQTT loop...")
@@ -281,7 +327,6 @@ def main():
         logger.error(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
         mqtt.stop()
         sys.exit(1)
-
 
 if __name__ == '__main__':
     # Entry point for the script

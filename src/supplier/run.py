@@ -28,18 +28,20 @@ AWARD_TOPIC = "supplier/1/award"  # Thema für Gewinner
 PROCESSED_TOPIC = 'roboter/+/processed'  # Thema für Bearbeitungsbestätigungen
 ROBOTER_REGISTER_TOPIC='roboter/+/register'
 ROBOT_STATUS_TOPIC='roboter/+/status'
+ADAPTIVE_MODE_TOPIC = os.environ.get('ADAPTIVE_MODE_TOPIC', 'mgmt/adaptive_mode')
+RECONFIGURE_TOPIC = NAME + "/reconfigure"
 
 # Variablen
 supplier_package_type_1 = int(os.environ.get('PACKAGE_TYPE_1_UNIT', 100))
 supplier_package_type_2 = int(os.environ.get('PACKAGE_TYPE_2_UNIT', 100))
 tick_counter_A = 0
 tick_counter_B = 0
-random_quantity = 0
 valid_priorities = ["express", "standard", "post"]
 proposals = set()  # Liste der empfangenen Angebote
-registrated_robots = set()
+registrated_robots = []
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 cfp_flag = False
+adaptive_mode = False
 
 
 
@@ -85,6 +87,10 @@ def on_message_proposals(client, userdata, msg):
     try:
         # Proposal empfangen
         proposal = json.loads(msg.payload.decode("utf-8"))
+
+        if proposal.get("place") != NAME:
+            logger.info(f"Proposal von {proposal['name']} wird ignoriert (falscher Lieferant).")
+            return
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
@@ -106,9 +112,10 @@ def on_message_proposals(client, userdata, msg):
             logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
-        if len(proposals) >= sum(1 for status in robot_statuses.values() if status == "ready"):
+        ready_robots_count = sum(1 for status in robot_statuses.values() if status == "ready")
+        if (not adaptive_mode and len(proposals) >= ready_robots_count) or (adaptive_mode and len(proposals) >= 1):
             package_type = proposal.get("package_type")
-            select_winner_and_award(client,package_type)
+            select_winner_and_award(client, package_type)
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren des Proposals: {e}")
@@ -121,17 +128,16 @@ def on_processed_message(client, userdata, msg):
     Callback für Bearbeitungsbestätigungen von Robotern.
     Reduziert den Lagerbestand.
     """
-    global supplier_package_type_1, supplier_package_type_2,random_quantity
+    global supplier_package_type_1, supplier_package_type_2
     try:
         processed_data = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
-       # logger.info(f"random_quantity: {random_quantity}")
 
         package_type = processed_data.get("package_type")
         if package_type == 1 and supplier_package_type_1 > 0:
-            supplier_package_type_1 -= random_quantity
+            supplier_package_type_1 -= 1
         elif package_type == 2 and supplier_package_type_1 > 0:
-            supplier_package_type_2 -= random_quantity
+            supplier_package_type_2 -= 1
 
         logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
@@ -250,14 +256,36 @@ def on_registration(client, userdata, msg):
 
     # Beispiel: Nehmen wir an, `register_data` enthält eine eindeutige "id" des Roboters.
     robot_id = register_data.get("name")
-    if robot_id:
-        registrated_robots.add(robot_id)  # Nur die ID hinzufügen
-        logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
-    else:
-        logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
+
+    if robot_id and register_data.get("supplier") == NAME:
+        if robot_id not in registrated_robots:
+            registrated_robots.append(robot_id)  # Nur die ID hinzufügen
+            logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
+        else:
+            logger.info(f"Roboter mit ID: {robot_id} ist bereits registriert.")
+    elif robot_id and register_data.get("supplier") != NAME:
+        if robot_id in registrated_robots:
+            registrated_robots.remove(robot_id)
+            logger.warning(f"Roboter mit ID: {robot_id} wurde entfernt, da der Lieferant nicht übereinstimmt.")
+        else:
+            logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
 
     logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
 
+
+def on_adaptive_mode_message(client, userdata, msg):
+    global adaptive_mode
+    try:
+        message = msg.payload.decode("utf-8").strip().lower()
+        if message == 'true':
+            adaptive_mode = True
+        elif message == 'false':
+            adaptive_mode = False
+        else:
+            logger.warning(f"Ungültige Nachricht für den adaptiven Modus empfangen: {message}")
+        logger.info(f"Adaptiver Modus gesetzt auf: {adaptive_mode}")
+    except Exception as e:
+        logger.error(f"Fehler beim Verarbeiten der Nachricht für den adaptiven Modus: {e}")
 
 def main():
     """
@@ -290,6 +318,12 @@ def main():
     mqtt.subscribe(PROCESSED_TOPIC)
     mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
     logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
+
+    mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
+    mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)
+    logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
+
+
 
 
     try:

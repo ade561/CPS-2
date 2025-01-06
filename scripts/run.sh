@@ -14,20 +14,35 @@ docker run -d -p 127.0.0.1:1880:1880 --net=cps-net --name dashboard dashboard:0.
 
 echo "Starting Storage_1"
 docker run -d --net=cps-net \
-  -e EC_NAME='storage_1' \
+  -e EC_NAME='storage/1' \
   -e EC_MQTT_TOPIC='storage/1/data' \
-  -e ROBOTER_PROCESS_TOPICS='roboter/1/processed,roboter/2/processed,roboter/3/processed,roboter/4/processed' \
   --name storage_1 storage:0.1
+
+echo "Starting Storage_2"
+docker run -d --net=cps-net \
+  -e EC_NAME='storage/2' \
+  -e EC_MQTT_TOPIC='storage/2/data' \
+  --name storage_2 storage:0.1
 
 echo "Starting Supplier_1"
 docker run -d --net=cps-net \
-  -e EC_NAME='supplier_1' \
+  -e EC_NAME='supplier/1' \
   -e EC_MQTT_TOPIC='supplier/1/data' \
   -e CFP_TOPIC='supplier/1/cfp' \
   -e AWARD_TOPIC='supplier/1/award' \
   -e PACKAGE_TYPE_1_UNIT=100 \
   -e PACKAGE_TYPE_2_UNIT=100 \
   --name supplier_1 supplier:0.1
+
+echo "Starting Supplier_2"
+docker run -d --net=cps-net \
+  -e EC_NAME='supplier/2' \
+  -e EC_MQTT_TOPIC='supplier/2/data' \
+  -e CFP_TOPIC='supplier/2/cfp' \
+  -e AWARD_TOPIC='supplier/2/award' \
+  -e PACKAGE_TYPE_1_UNIT=100 \
+  -e PACKAGE_TYPE_2_UNIT=100 \
+  --name supplier_2 supplier:0.1
 
 echo "Starting Robots"
 docker run -d --net=cps-net \
@@ -38,6 +53,8 @@ docker run -d --net=cps-net \
   -e ROBOTER_PROPOSAL_TOPIC='roboter/1/proposal' \
   -e ROBOTER_REGISTER_TOPIC='roboter/1/register' \
   -e ROBOT_STATUS_TOPIC='roboter/1/status' \
+  -e SUPPLIER='supplier/1' \
+  -e STORAGE='storage/1' \
   --name roboter_1 roboter:0.1
 
 docker run -d --net=cps-net \
@@ -48,6 +65,8 @@ docker run -d --net=cps-net \
   -e ROBOTER_PROPOSAL_TOPIC='roboter/2/proposal' \
   -e ROBOTER_REGISTER_TOPIC='roboter/2/register' \
   -e ROBOT_STATUS_TOPIC='roboter/2/status' \
+  -e SUPPLIER='supplier/1' \
+  -e STORAGE='storage/1' \
   --name roboter_2 roboter:0.1
 
 docker run -d --net=cps-net \
@@ -58,6 +77,8 @@ docker run -d --net=cps-net \
   -e ROBOTER_PROPOSAL_TOPIC='roboter/3/proposal' \
   -e ROBOTER_REGISTER_TOPIC='roboter/3/register' \
   -e ROBOT_STATUS_TOPIC='roboter/3/status' \
+  -e SUPPLIER='supplier/1' \
+  -e STORAGE='storage/1' \
   --name roboter_3 roboter:0.1
 
 # docker run -d --net=cps-net \

@@ -5,10 +5,23 @@ import logging
 from datetime import datetime, timedelta
 from mqtt.mqtt_wrapper import MQTTWrapper
 
+
+
 TICK_TOPIC = "tickgen/tick"
+REKONFIG_TIMER_TOPIC = "rekonfig/time"
 SPEEDFACTOR_TOPIC = "tickgen/speed_factor"
 interval_sec = 30
 speed_factor = 10
+reconfig_counter = 20
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def on_message_speedfactor(client, userdata, msg):
     global speed_factor
@@ -25,14 +38,26 @@ def main():
     mqtt.subscribe(SPEEDFACTOR_TOPIC)
     mqtt.subscribe_with_callback(SPEEDFACTOR_TOPIC, on_message_speedfactor)
 
+
+
     try:
         while True:
             ts = START_DATE + timedelta(seconds=tick_sec)
             ts_iso = ts.isoformat()
 
             mqtt.publish(TICK_TOPIC, ts_iso)
+            #mqtt.publish("Test", json.dumps())
             tick_sec = tick_sec + 30
             time.sleep(interval_sec * (1.0 / speed_factor))
+
+            global reconfig_counter
+            reconfig_counter -= 1
+            if reconfig_counter <= 0:
+                mqtt.publish(REKONFIG_TIMER_TOPIC, json.dumps(reconfig_counter))
+                logger.info(f"Reconfig Counter abgelaufen. True auf {REKONFIG_TIMER_TOPIC} veröffentlicht.")
+                reconfig_counter = 20
+                
+
     except(KeyboardInterrupt, SystemExit):
         mqtt.stop()
         sys.exit("KeyboardInterrupt -- shutdown gracefully.")
