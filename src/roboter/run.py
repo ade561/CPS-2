@@ -30,7 +30,7 @@ register_flag = False
 transport_type = ["express", "standard"]
 current_storage = os.environ.get('STORAGE')
 current_supplier = os.environ.get('SUPPLIER')
-reconfig_data = {}  # Reconfig-Daten als Feld
+reconfig_data = []  # Reconfig-Daten als Feld
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -55,7 +55,6 @@ def register_robot(client):
         "supplier": current_supplier
     }
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
-    logger.info(f"{NAME} hat sich erfolgreich beim Supplier registriert.")
 
     # Initialer Status
     status_data = {
@@ -122,7 +121,6 @@ def on_award_message(client, userdata, msg):
     global roboter_status
     try:
         award_data = json.loads(msg.payload.decode("utf-8"))
-        logger.info(f"Empfangene Award-Daten: {award_data}")
 
         # Überprüfen, ob die notwendigen Felder vorhanden sind
         if not all(key in award_data for key in ["winner", "package_type", "transport_type", "battery", "battery_cost", "estimated_time"]):
@@ -130,15 +128,7 @@ def on_award_message(client, userdata, msg):
             return
 
         if award_data["winner"] == NAME:
-            roboter_status = "busy"  # Setze Roboter auf "busy"
-
-            current_status = {
-                "name": NAME,
-                "status": roboter_status
-            }
-            client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
-
-            logger.info(f"aktueller Status gepublished: {roboter_status}")
+            logger.info(f"Empfangene Award-Daten: {award_data}")
             process_package(client, award_data["package_type"], award_data["battery_cost"], award_data["estimated_time"], award_data["timestamp"], award_data["transport_type"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
@@ -155,6 +145,8 @@ def on_tick_message(client, userdata, msg):
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
+    data = {"battery": roboter_battery,}
+    client.publish(DATA_TOPIC, json.dumps(data))
     if roboter_battery < 20:
         logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
         charge_battery(client)
@@ -179,8 +171,8 @@ def send_proposal(client, package_type):
             "package_type": package_type,
             "transport_type": 2,
             "battery": roboter_battery,
-            "battery_cost": random.randint(8, 20),
-            "estimated_time": random.randint(1, 4)
+            "battery_cost": random.randint(8, 10),
+            "estimated_time": random.randint(2, 5)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
         #logger.info(f"Proposal gesendet: {proposal}")
@@ -191,8 +183,8 @@ def send_proposal(client, package_type):
             "package_type": package_type,
             "transport_type": 1,
             "battery": roboter_battery,
-            "battery_cost": random.randint(4, 15),
-            "estimated_time": random.randint(3, 6)
+            "battery_cost": random.randint(4, 8),
+            "estimated_time": random.randint(5, 8)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
         #logger.info(f"Proposal gesendet: {proposal}\n")
@@ -206,6 +198,13 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
        # logger.info(f"{NAME} beginnt mit der Bearbeitung von Paket Typ {package_type}.")
         time.sleep(package_time)  # Simuliere Bearbeitungszeit
        # logger.info(f"{NAME} hat die Bearbeitung von Paket Typ {package_type} abgeschlossen.")
+        roboter_status = "busy"  # Setze Roboter auf "busy"
+
+        current_status = {
+            "name": NAME,
+            "status": roboter_status
+        }
+        client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
 
         # Bestätigung senden
         confirmation = {
@@ -219,7 +218,7 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
-        roboter_battery -= battery_cost
+        roboter_battery = max(0,roboter_battery-battery_cost)
         logger.info(f"{NAME} AKKU= {roboter_battery}")
         roboter_status = "ready"
 
@@ -229,14 +228,9 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
         }
 
         client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
-        logger.info(f"aktueller Status gepublished: {roboter_status}")
 
         logger.info(f"Status des {NAME}: {roboter_status}\n.")
 
-        data = {
-            "battery": roboter_battery,
-        }
-        client.publish(DATA_TOPIC, json.dumps(data))
         #logger.info(f"{NAME} Daten veröffentlicht: {data}")
 
     except Exception as e:
@@ -244,7 +238,7 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
 
 
         
-def on_reconfig_message():
+def on_reconfig_message(client, userdata, msg):
     global reconfig_data
 
     try:

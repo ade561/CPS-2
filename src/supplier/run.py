@@ -32,8 +32,8 @@ ADAPTIVE_MODE_TOPIC = os.environ.get('ADAPTIVE_MODE_TOPIC', 'mgmt/adaptive_mode'
 RECONFIGURE_TOPIC = NAME + "/reconfigure"
 
 # Variablen
-supplier_package_type_1 = int(os.environ.get('PACKAGE_TYPE_1_UNIT', 100))
-supplier_package_type_2 = int(os.environ.get('PACKAGE_TYPE_2_UNIT', 100))
+supplier_package_type_1 = 100
+supplier_package_type_2 = 100
 tick_counter_A = 0
 tick_counter_B = 0
 valid_priorities = ["express", "standard", "post"]
@@ -134,12 +134,14 @@ def on_processed_message(client, userdata, msg):
         logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
 
         package_type = processed_data.get("package_type")
-        if package_type == 1 and supplier_package_type_1 > 0:
-            supplier_package_type_1 -= 1
-        elif package_type == 2 and supplier_package_type_1 > 0:
-            supplier_package_type_2 -= 1
+        supplier_name = processed_data.get("supplier")
 
-        logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
+        if supplier_name == NAME:
+            if package_type == 1 and supplier_package_type_1 > 0:
+                supplier_package_type_1 -= 1
+            elif package_type == 2 and supplier_package_type_1 > 0:
+                supplier_package_type_2 -= 1
+            logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
 
