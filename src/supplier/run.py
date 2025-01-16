@@ -41,10 +41,11 @@ proposals = set()  # Liste der empfangenen Angebote
 registrated_robots = []
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 cfp_flag = False
-adaptive_mode = False
+adaptive_mode = True
+current_tick = None
 
 
-
+#TODO Refactor this function for the registered Robots
 def on_robot_status(client, userdata, msg):
     """
     Callback für Ladezustandsnachrichten von Robotern.
@@ -59,8 +60,8 @@ def on_robot_status(client, userdata, msg):
 
         if robot_name and status:
             robot_statuses[robot_name] = status
-            logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
-            logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
+            #logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
+            #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
         else:
             logger.warning(f"Ungültige Ladezustandsdaten empfangen: {charging_data}")
     except json.JSONDecodeError as e:
@@ -82,7 +83,7 @@ def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
    # logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_proposals(client, userdata, msg):
-    global proposals
+    global proposals,adaptive_mode
 
     try:
         # Proposal empfangen
@@ -101,19 +102,20 @@ def on_message_proposals(client, userdata, msg):
             proposal.get("battery_cost") ,
             proposal.get("estimated_time"),
             proposal.get("package_type")
+            #proposal.get("") #TODO add timestamp in the Proposal
             )
 
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
             proposals.add(proposal_tuple)
-            logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
-            logger.info(f"aktuelle Proposals : {proposals}")
-        else:
-            logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
+            #logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
+        # else:
+        #     logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
         ready_robots_count = sum(1 for status in robot_statuses.values() if status == "ready")
-        if (not adaptive_mode and len(proposals) >= ready_robots_count) or (adaptive_mode and len(proposals) >= 1):
+        if (adaptive_mode == True and len(proposals) >= ready_robots_count) or (adaptive_mode == False and len(proposals) > 0):
+            logger.info(f"Proposals : {proposals} : ADAPTIVE={adaptive_mode}")
             package_type = proposal.get("package_type")
             select_winner_and_award(client, package_type)
 
@@ -152,21 +154,21 @@ def calculate_score(proposal):
     Ein höherer Score bedeutet ein besseres Proposal.
     """
     # Gewichtungen
-    transport_weight = 0.25      
-    battery_weight = 0.25        
-    battery_cost_weight = 0.25    
+    transport_weight = 0.45 if proposal[1] == "express" else 0.2      
+    #battery_weight = 0.25        
+    battery_cost_weight = 0.3    
     estimated_time_weight = 0.25  
 
     # Berechnung des Scores (alle positiv gewichtet)
     transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
-    battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
+    #battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
     battery_cost_score = -battery_cost_weight * proposal[3] # Niedrigere Kosten = besser
     estimated_time_score = -estimated_time_weight * proposal[4]  # Kürzere Zeit = besser
 
     # Gesamtscore
     score = (
         transport_score +
-        battery_score +
+        #battery_score +
         battery_cost_score +
         estimated_time_score
     )
@@ -176,7 +178,7 @@ def calculate_score(proposal):
 
 
 def select_winner_and_award(client,package_type):
-    global proposals,cfp_flag
+    global proposals,cfp_flag,current_tick
 
     if not proposals:
         logger.info("Keine Proposals empfangen. Kein Award vergeben.")
@@ -192,7 +194,7 @@ def select_winner_and_award(client,package_type):
         "battery_cost": winner[3],    # Batteriekosten
         "estimated_time": winner[4],   # Bearbeitungszeit
         "package_type": package_type,
-        "timestamp": time.time()     # Zeitstempel
+        "timestamp": current_tick     # Zeitstempel
     }
     client.publish(AWARD_TOPIC, json.dumps(award_message))
     logger.info(f"Award vergeben an: {award_message}\n")
@@ -201,15 +203,17 @@ def select_winner_and_award(client,package_type):
     proposals.clear()
 
 
-
+#TODO check how many Roboter registerd. If none publish it and ask for some. the one with the most give Robots
 def on_message_tick(client, userdata, msg):
-    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick
 
     ts_iso = msg.payload.decode("utf-8")
+    current_tick = ts_iso
+    logger.info(f"CURRENT_TS:{current_tick}")
 
     # Überprüfen, ob mindestens ein Roboter "ready" ist
     if not any(status == "ready" for status in robot_statuses.values()):
-        #logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
+        logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
         return
     
     if supplier_package_type_1 <= 0:
@@ -232,6 +236,10 @@ def on_message_tick(client, userdata, msg):
         if supplier_package_type_1 > 0 and supplier_package_type_2 <= 0:
             random_package = 1
         elif supplier_package_type_1 <= 0 and supplier_package_type_2 > 0:
+            random_package = 2
+        elif abs(supplier_package_type_1 - supplier_package_type_2) >= 20:
+            random_package = 1
+        elif abs(supplier_package_type_2 - supplier_package_type_1) >= 20:
             random_package = 2
         else:
             random_package = 1 if random.random() < 0.5 else 2
@@ -256,12 +264,13 @@ def on_registration(client, userdata, msg):
     global registrated_robots
     register_data = json.loads(msg.payload.decode("utf-8"))
 
-    # Beispiel: Nehmen wir an, `register_data` enthält eine eindeutige "id" des Roboters.
     robot_id = register_data.get("name")
+    robot_status = register_data.get("status")
 
     if robot_id and register_data.get("supplier") == NAME:
         if robot_id not in registrated_robots:
             registrated_robots.append(robot_id)  # Nur die ID hinzufügen
+            robot_statuses[robot_id] = robot_status
             logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
         else:
             logger.info(f"Roboter mit ID: {robot_id} ist bereits registriert.")
@@ -272,7 +281,7 @@ def on_registration(client, userdata, msg):
         else:
             logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
 
-    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
+    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : ROBOT_STASUSES={robot_statuses} : Laenge= {len(registrated_robots)}\n")
 
 
 def on_adaptive_mode_message(client, userdata, msg):
@@ -302,16 +311,13 @@ def main():
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
     logger.info(f"{mqtt.name} subscribed to Robot tick Topic: {TICK_TOPIC}")
 
-
     mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOTER_REGISTER_TOPIC}")
 
-
     mqtt.subscribe(ROBOT_STATUS_TOPIC)
     mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
     logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
-
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
@@ -321,12 +327,9 @@ def main():
     mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
     logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
 
-    mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
-    mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)
-    logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
-
-
-
+    # mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
+    # mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)
+    # logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
 
     try:
         logger.info("Starting MQTT loop...")

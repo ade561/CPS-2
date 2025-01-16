@@ -51,6 +51,7 @@ def register_robot(client):
     # Registrierungsdaten
     register_data = {
         "name": NAME,
+        "status": roboter_status,
         "storage": current_storage,
         "supplier": current_supplier
     }
