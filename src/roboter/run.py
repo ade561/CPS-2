@@ -26,14 +26,18 @@ REKONFIG_TIMER_TOPIC = "rekonfig/time"
 RECONFIGURE_DATA = "+/+/reconfigure"
 
 # Variablen
+lastRegisteredSupplier = ""
+lastRegisteredStorage = ""
+currentNumberOfSuppliers = os.environ.get('NUMBER_OF_SUPPLIERS')
+currentNumberOfStorages = os.environ.get('NUMBER_OF_STORAGES')
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
 current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
 transport_type = ["express", "standard"]
-current_storage = os.environ.get('STORAGE')
-current_supplier = os.environ.get('SUPPLIER')
+current_storage = ""
+current_supplier = ""
 reconfig_data = []  # Reconfig-Daten als Feld
 
 # Logging-Konfiguration
@@ -50,8 +54,18 @@ def register_robot(client):
     """
     Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
     """
-    global roboter_status
+    global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier
+    numberOfStorage = random.randint(1, int(currentNumberOfStorages))
+    numberOfSupplier = random.randint(1, int(currentNumberOfSuppliers))
 
+    current_supplier = f"supplier/{numberOfSupplier}"
+    current_storage = f"storage/{numberOfStorage}"
+
+    logger.info(f"CURRENT SUPPLIER: {current_supplier}, CURRENT STORAGE: {current_storage}")
+    if current_supplier == lastRegisteredSupplier and current_storage == lastRegisteredStorage:
+        logger.info(f"Robot {NAME} has already been registered with the same supplier and storage. Supplier: {current_supplier}, Storage: {current_storage}")
+        return
+    
     # Registrierungsdaten
     register_data = {
         "name": NAME,
@@ -60,6 +74,8 @@ def register_robot(client):
         "supplier": current_supplier
     }
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
+    lastRegisteredStorage = current_storage
+    lastRegisteredSupplier = current_supplier
 
 
 def on_registerConfirmationTopic(client, userdata, msg):
@@ -72,7 +88,6 @@ def on_registerConfirmationTopic(client, userdata, msg):
     confirmation_supplier_name = register_data.get("supplier")
     confirmation_name = register_data.get("name")
     confirmation_status = register_data.get("status")
-    logger.info(f"AMK DIE CONFIRMATION= SUPPLIER:{confirmation_supplier_name},CURRENT:{current_supplier}, NAME:{confirmation_name}, STATUS:{confirmation_status}.")
 
     if confirmation_name == NAME and confirmation_supplier_name == current_supplier:
         if confirmation_status == "registered":

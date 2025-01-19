@@ -47,13 +47,13 @@ for i in $(seq 1 $NUM_ROBOTS); do
   docker run -d --net=cps-net \
     -e EC_NAME="roboter_$i" \
     -e EC_MQTT_TOPIC="roboter/$i/data" \
+    -e NUMBER_OF_STORAGES=$NUM_STORAGES \
+    -e NUMBER_OF_SUPPLIERS=$NUM_SUPPLIERS \
     -e PROCESSED_TOPIC="roboter/$i/processed" \
     -e CFP_TOPIC="supplier/1/cfp" \
     -e ROBOTER_PROPOSAL_TOPIC="roboter/$i/proposal" \
     -e ROBOTER_REGISTER_TOPIC="roboter/$i/register" \
     -e ROBOTER_REGISTER_CONFIRMATION_TOPIC="roboter/roboter_$i/registerConfirmation" \
     -e ROBOT_STATUS_TOPIC="roboter/$i/status" \
-    -e SUPPLIER="supplier/1" \
-    -e STORAGE="storage/1" \
     --name "roboter_$i" roboter:0.1
 done
