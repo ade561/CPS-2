@@ -12,12 +12,16 @@ NAME = os.environ['EC_NAME']
 # MQTT Topics
 DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
 CFP_TOPIC = os.environ.get('CFP_TOPIC')  # CfP-Thema
-PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
+TICK_TOPIC = "tickgen/tick"
+
 ROBOT_PROPOSAL_TOPIC = os.environ.get('ROBOTER_PROPOSAL_TOPIC')
 ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')
+ROBOTER_REGISTER_CONFIRMATION_TOPIC = os.environ.get('ROBOTER_REGISTER_CONFIRMATION_TOPIC')
 ROBOT_STATUS_TOPIC = os.environ.get('ROBOT_STATUS_TOPIC')
+
 AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
-TICK_TOPIC = "tickgen/tick"
+PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
+
 REKONFIG_TIMER_TOPIC = "rekonfig/time"
 RECONFIGURE_DATA = "+/+/reconfigure"
 
@@ -46,7 +50,7 @@ def register_robot(client):
     """
     Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
     """
-    global register_flag, roboter_status
+    global roboter_status
 
     # Registrierungsdaten
     register_data = {
@@ -57,16 +61,25 @@ def register_robot(client):
     }
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
 
-    # Initialer Status
-    status_data = {
-        "name": NAME,
-        "status": roboter_status  # Initialstatus: "ready"
-    }
-    client.publish(ROBOT_STATUS_TOPIC, json.dumps(status_data))
-    logger.info(f"Initialer Status veröffentlicht: {status_data}")
 
-    # Registrierung als abgeschlossen markieren
-    register_flag = True
+def on_registerConfirmationTopic(client, userdata, msg):
+    """
+    Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
+    """
+    global register_flag
+
+    register_data = json.loads(msg.payload.decode("utf-8"))
+    confirmation_supplier_name = register_data.get("supplier")
+    confirmation_name = register_data.get("name")
+    confirmation_status = register_data.get("status")
+    logger.info(f"AMK DIE CONFIRMATION= SUPPLIER:{confirmation_supplier_name},CURRENT:{current_supplier}, NAME:{confirmation_name}, STATUS:{confirmation_status}.")
+
+    if confirmation_name == NAME and confirmation_supplier_name == current_supplier:
+        if confirmation_status == "registered":
+            register_flag = True
+            logger.info(f"{NAME} wurde erfolgreich registriert.")
+            logger.info(f"CONFIRM=Supplier: {confirmation_supplier_name}, Name: {confirmation_name}, Status: {confirmation_status}, Register_Flag: {register_flag}")
+
 
 def charge_battery(client):
     """
@@ -104,7 +117,7 @@ def on_cfp_message(client, userdata, msg):
     Callback für CfP-Nachrichten vom Supplier.
     Speichert die empfangenen CfP-Daten.
     """
-    global current_cfp_data, last_cfp_data, register_flag
+    global current_cfp_data, last_cfp_data
     try:
         cfp_data = json.loads(msg.payload.decode("utf-8"))
         if cfp_data != last_cfp_data:
@@ -141,8 +154,8 @@ def on_tick_message(client, userdata, msg):
     Callback für Tick-Nachrichten.
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
-    global last_cfp_data, roboter_status, roboter_battery, register_flag
-    
+    global last_cfp_data, roboter_status, roboter_battery
+
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
@@ -301,6 +314,10 @@ def main():
     mqtt.subscribe(TICK_TOPIC)
     mqtt.subscribe_with_callback(TICK_TOPIC, on_tick_message)
     logger.info(f"{mqtt.name} subscribed to Tick-Topic: {TICK_TOPIC}")
+
+    mqtt.subscribe(ROBOTER_REGISTER_CONFIRMATION_TOPIC)
+    mqtt.subscribe_with_callback(ROBOTER_REGISTER_CONFIRMATION_TOPIC, on_registerConfirmationTopic)
+    logger.info(f"{mqtt.name} subscribed to Tick-Topic: {ROBOTER_REGISTER_CONFIRMATION_TOPIC}")
 
     mqtt.subscribe(REKONFIG_TIMER_TOPIC)
     mqtt.subscribe_with_callback(REKONFIG_TIMER_TOPIC, on_reconfig_message)

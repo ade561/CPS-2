@@ -26,7 +26,7 @@ CFP_TOPIC = os.environ.get('CFP_TOPIC')  # Call-for-Proposals-Thema
 ROBOTER_PROPOSAL_TOPIC = 'roboter/+/proposal' # Proposals-Thema
 AWARD_TOPIC = "supplier/1/award"  # Thema für Gewinner
 PROCESSED_TOPIC = 'roboter/+/processed'  # Thema für Bearbeitungsbestätigungen
-ROBOTER_REGISTER_TOPIC='roboter/+/register'
+ROBOT_REGISTER_TOPIC='roboter/+/register'
 ROBOT_STATUS_TOPIC='roboter/+/status'
 ADAPTIVE_MODE_TOPIC = os.environ.get('ADAPTIVE_MODE_TOPIC', 'mgmt/adaptive_mode')
 RECONFIGURE_TOPIC = NAME + "/reconfigure"
@@ -90,7 +90,6 @@ def on_message_proposals(client, userdata, msg):
         proposal = json.loads(msg.payload.decode("utf-8"))
 
         if proposal.get("place") != NAME:
-            logger.info(f"Proposal von {proposal['name']} wird ignoriert (falscher Lieferant).")
             return
         logger.info(f"Proposal empfangen: {proposal}")
 
@@ -205,12 +204,23 @@ def select_winner_and_award(client,package_type):
 
 #TODO check how many Roboter registerd. If none publish it and ask for some. the one with the most give Robots
 def on_message_tick(client, userdata, msg):
-    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick,registrated_robots
 
     ts_iso = msg.payload.decode("utf-8")
     current_tick = ts_iso
     logger.info(f"CURRENT_TS:{current_tick}")
 
+    data = {
+        "package_type_1": supplier_package_type_1,
+        "package_type_2": supplier_package_type_2,
+        "timestamp": ts_iso
+    }
+    client.publish(DATA_TOPIC, json.dumps(data))
+
+    if not registrated_robots:
+        logger.info("Keine Roboter Roboter haben sich registriert. CfPs werden nicht gesendet.")
+        return
+    
     # Überprüfen, ob mindestens ein Roboter "ready" ist
     if not any(status == "ready" for status in robot_statuses.values()):
         logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
@@ -252,36 +262,52 @@ def on_message_tick(client, userdata, msg):
             random_quantity = random.randint(1, min(4, supplier_package_type_2))
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
 
-    data = {
-        "package_type_1": supplier_package_type_1,
-        "package_type_2": supplier_package_type_2,
-        "timestamp": ts_iso
-    }
-    client.publish(DATA_TOPIC, json.dumps(data))
-
 
 def on_registration(client, userdata, msg):
-    global registrated_robots
-    register_data = json.loads(msg.payload.decode("utf-8"))
+    global registrated_robots, robot_statuses
 
-    robot_id = register_data.get("name")
-    robot_status = register_data.get("status")
+    try:
+        register_data = json.loads(msg.payload.decode("utf-8"))
+        robot_id = register_data.get("name")
+        robot_status = register_data.get("status")
+        target_supplier = register_data.get("supplier")
 
-    if robot_id and register_data.get("supplier") == NAME:
-        if robot_id not in registrated_robots:
-            registrated_robots.append(robot_id)  # Nur die ID hinzufügen
-            robot_statuses[robot_id] = robot_status
-            logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
-        else:
-            logger.info(f"Roboter mit ID: {robot_id} ist bereits registriert.")
-    elif robot_id and register_data.get("supplier") != NAME:
+        if not robot_id or not robot_status:
+            logger.error(f"Ungültige Registrierungsdaten empfangen: {register_data}")
+            return
+
+        if target_supplier != NAME:
+            logger.warning(f"Roboter {robot_id} versucht sich bei falschem Supplier zu registrieren.")
+            return
+
         if robot_id in registrated_robots:
-            registrated_robots.remove(robot_id)
-            logger.warning(f"Roboter mit ID: {robot_id} wurde entfernt, da der Lieferant nicht übereinstimmt.")
+            logger.info(f"Roboter {robot_id} ist bereits registriert. Status wird aktualisiert.")
+            return
         else:
-            logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
 
-    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : ROBOT_STASUSES={robot_statuses} : Laenge= {len(registrated_robots)}\n")
+                    # Sende Bestätigung an den Roboter
+            confirmation = {
+                "name": robot_id,
+                "status": "registered",
+                "supplier": NAME
+            }
+
+            confirmation_topic = f"roboter/{robot_id}/registerConfirmation"
+            client.publish(confirmation_topic, json.dumps(confirmation))
+            logger.info(f"Registrierungsbestätigung an Roboter {robot_id} auf Topic {confirmation_topic} gesendet.")
+
+
+            logger.info(f"Registrierungsbestätigung an Roboter {robot_id} gesendet.")
+            registrated_robots.append(robot_id)
+            robot_statuses[robot_id] = robot_status
+            logger.info(f"Roboter {robot_id} erfolgreich registriert.")
+
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Verarbeiten der Registrierungsdaten: {e}")
+    except Exception as e:
+        logger.error(f"Ein unerwarteter Fehler bei der Registrierung: {e}")
+
 
 
 def on_adaptive_mode_message(client, userdata, msg):
@@ -311,9 +337,9 @@ def main():
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
     logger.info(f"{mqtt.name} subscribed to Robot tick Topic: {TICK_TOPIC}")
 
-    mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
-    mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
-    logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOTER_REGISTER_TOPIC}")
+    mqtt.subscribe(ROBOT_REGISTER_TOPIC)
+    mqtt.subscribe_with_callback(ROBOT_REGISTER_TOPIC,on_registration)
+    logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOT_REGISTER_TOPIC}")
 
     mqtt.subscribe(ROBOT_STATUS_TOPIC)
     mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
