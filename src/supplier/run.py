@@ -91,6 +91,9 @@ def on_message_proposals(client, userdata, msg):
 
         if proposal.get("place") != NAME:
             return
+        if proposal.get("name") in {p[0] for p in proposals}:
+            return
+
         logger.info(f"Proposal empfangen: {proposal}")
 
         # Erstelle ein Tupel aus den Proposal-Daten
@@ -101,7 +104,7 @@ def on_message_proposals(client, userdata, msg):
             proposal.get("battery_cost") ,
             proposal.get("estimated_time"),
             proposal.get("package_type")
-            #proposal.get("") #TODO add timestamp in the Proposal
+
             )
 
         # Proposal zum Set hinzufügen
@@ -208,7 +211,7 @@ def on_message_tick(client, userdata, msg):
 
     ts_iso = msg.payload.decode("utf-8")
     current_tick = ts_iso
-    logger.info(f"CURRENT_TS:{current_tick}")
+    logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
     data = {
         "package_type_1": supplier_package_type_1,
@@ -341,9 +344,9 @@ def main():
     mqtt.subscribe_with_callback(ROBOT_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOT_REGISTER_TOPIC}")
 
-    mqtt.subscribe(ROBOT_STATUS_TOPIC)
-    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
-    logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
+    # mqtt.subscribe(ROBOT_STATUS_TOPIC)
+    # mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
+    # logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
