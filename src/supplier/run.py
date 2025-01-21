@@ -44,7 +44,6 @@ adaptive_mode = True
 current_tick = None
 
 
-#TODO Refactor this function for the registered Robots
 def on_robot_status(client, userdata, msg):
     """
     Callback für Ladezustandsnachrichten von Robotern.
@@ -57,12 +56,10 @@ def on_robot_status(client, userdata, msg):
         robot_name = charging_data.get("name")
         status = charging_data.get("status")
 
-        if robot_name and status:
-            robot_statuses[robot_name] = status
-            #logger.info(f"Zustand von {robot_name} aktualisiert: {status}")
-            #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
-        else:
-            logger.warning(f"Ungültige Ladezustandsdaten empfangen: {charging_data}")
+        if robot_name in registrated_robots:
+            if robot_name and status:
+                robot_statuses[robot_name] = status
+                logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Ladezustandsnachricht: {e}")
 
@@ -249,19 +246,15 @@ def on_message_tick(client, userdata, msg):
             random_package = 1
         elif supplier_package_type_1 <= 0 and supplier_package_type_2 > 0:
             random_package = 2
-        elif abs(supplier_package_type_1 - supplier_package_type_2) >= 20:
-            random_package = 1
-        elif abs(supplier_package_type_2 - supplier_package_type_1) >= 20:
-            random_package = 2
         else:
             random_package = 1 if random.random() < 0.5 else 2
         cfp_flag = True
         if supplier_package_type_1 > 0 and random_package == 1:
-            random_quantity = random.randint(1, min(4, supplier_package_type_1))
+            random_quantity = random.randint(3, min(6, supplier_package_type_1))
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
         
         elif supplier_package_type_2 > 0 and random_package == 2:
-            random_quantity = random.randint(1, min(4, supplier_package_type_2))
+            random_quantity = random.randint(3, min(6, supplier_package_type_2))
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
 
 
@@ -303,6 +296,7 @@ def on_registration(client, userdata, msg):
             registrated_robots.append(robot_id)
             robot_statuses[robot_id] = robot_status
             logger.info(f"Roboter {robot_id} erfolgreich registriert.")
+            logger.info(f"Aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
 
 
     except json.JSONDecodeError as e:
@@ -342,13 +336,12 @@ def main():
     mqtt.subscribe(ROBOT_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOT_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOT_REGISTER_TOPIC}")
+    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
 
-    if not registrated_robots:
-        for robot in registrated_robots:
-            mqtt.subscribe(f"roboter/{robot}/status")
-            mqtt.subscribe_with_callback(f"roboter/{robot}/status", on_robot_status)
-            logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {f'roboter/{robot}/status'}")
 
+    mqtt.subscribe(ROBOT_STATUS_TOPIC)
+    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
+    logger.info(f"{mqtt.name} subscribed to Robot status Topic: {ROBOT_STATUS_TOPIC}")
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
