@@ -3,7 +3,7 @@
 # Anzahl der Elemente definieren
 NUM_STORAGES=2
 NUM_SUPPLIERS=2
-NUM_ROBOTS=3
+NUM_ROBOTS=4
  
 # Netzwerk erstellen
 echo "Create network..."
@@ -54,6 +54,6 @@ for i in $(seq 1 $NUM_ROBOTS); do
     -e ROBOTER_PROPOSAL_TOPIC="roboter/$i/proposal" \
     -e ROBOTER_REGISTER_TOPIC="roboter/$i/register" \
     -e ROBOTER_REGISTER_CONFIRMATION_TOPIC="roboter/roboter_$i/registerConfirmation" \
-    -e ROBOT_STATUS_TOPIC="roboter/$i/status" \
+    -e ROBOT_STATUS_TOPIC="roboter/roboter_$i/status" \
     --name "roboter_$i" roboter:0.1
 done

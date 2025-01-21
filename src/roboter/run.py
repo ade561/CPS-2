@@ -35,10 +35,13 @@ current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
 roboter_battery = 100
 register_flag = False
+charging_flag = False
 transport_type = ["express", "standard"]
 current_storage = ""
 current_supplier = ""
 reconfig_data = []  # Reconfig-Daten als Feld
+charging_tick_counter = 0;
+process_tick_counter = 0;
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -77,7 +80,6 @@ def register_robot(client):
     lastRegisteredStorage = current_storage
     lastRegisteredSupplier = current_supplier
 
-
 def on_registerConfirmationTopic(client, userdata, msg):
     """
     Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
@@ -94,38 +96,6 @@ def on_registerConfirmationTopic(client, userdata, msg):
             register_flag = True
             logger.info(f"{NAME} wurde erfolgreich registriert.")
             logger.info(f"CONFIRM=Supplier: {confirmation_supplier_name}, Name: {confirmation_name}, Status: {confirmation_status}, Register_Flag: {register_flag}")
-
-
-def charge_battery(client):
-    """
-    Simuliert das Aufladen des Roboters.
-    """
-    global roboter_battery, roboter_status
-    roboter_status = "charging"
-    logger.info(f"{NAME} beginnt mit dem Aufladen des Akkus.")
-
-    charging_data = {
-        "name": NAME,
-        "status": roboter_status
-    }
-
-    client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-    logger.info(f"{NAME} published den Beginn des Ladevorgang auf {ROBOT_STATUS_TOPIC}, da aktueller AKKU={roboter_battery} beträgt")
-    while roboter_battery < 100:
-        time.sleep(5)  # Simuliere Ladezeit
-        roboter_battery += 10
-        roboter_battery = min(roboter_battery, 100)
-        logger.info(f"{NAME} lädt auf... Akku: {roboter_battery}%")
-    roboter_status = "ready"
-    logger.info(f"{NAME} Akku vollständig aufgeladen. Status: {roboter_status}.")
-    
-    charging_data = {
-        "name": NAME,
-        "status": roboter_status
-    }
-
-    client.publish(ROBOT_STATUS_TOPIC, json.dumps(charging_data))
-    #logger.info(f"{NAME} published das Ende des Ladevorgang auf {ROBOT_STATUS_TOPIC}.")
 
 def on_cfp_message(client, userdata, msg):
     """
@@ -147,7 +117,6 @@ def on_award_message(client, userdata, msg):
     Callback für AWARD-Nachrichten vom Supplier.
     Überprüft, ob der Roboter ausgewählt wurde.
     """
-    global roboter_status
     try:
         award_data = json.loads(msg.payload.decode("utf-8"))
 
@@ -169,17 +138,35 @@ def on_tick_message(client, userdata, msg):
     Callback für Tick-Nachrichten.
     Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
     """
-    global last_cfp_data, roboter_status, roboter_battery
+    global last_cfp_data, roboter_battery,charging_tick_counter,roboter_status,process_tick_counter
 
     if register_flag == False:
         register_robot(client)
     # Akku prüfen
     data = {"battery": roboter_battery,}
     client.publish(DATA_TOPIC, json.dumps(data))
+    
     if roboter_battery < 20:
-        logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
-        charge_battery(client)
-        return  # Kein Proposal senden, wenn der Akku geladen wird.
+        if charging_tick_counter  >= 0:
+            logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
+            charging_tick_counter = -1
+            return
+        roboter_battery = 100
+        logger.info(f"{NAME} Akku vollständig aufgeladen.")
+    
+    if roboter_status == "busy":
+        if process_tick_counter > 0:
+            process_tick_counter -= 1
+            return
+        else:
+            roboter_status = "ready"
+            current_status = {
+                "name": NAME,
+                "status": roboter_status
+            }
+            client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
+            logger.info(f"{NAME} ist bereit.")
+            return
 
     if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
         package_type = current_cfp_data.get("package_type")
@@ -189,7 +176,7 @@ def send_proposal(client, package_type):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
-    global roboter_status, roboter_battery, transport_type
+    global roboter_battery, transport_type
 
     transmission_type = transport_type[0 if random.random() < 0.35 else 1]
 
@@ -201,7 +188,7 @@ def send_proposal(client, package_type):
             "transport_type": 2,
             "battery": roboter_battery,
             "battery_cost": random.randint(8, 10),
-            "estimated_time": random.randint(2, 5)
+            "estimated_time": random.randint(1, 2)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
         #logger.info(f"Proposal gesendet: {proposal}")
@@ -213,22 +200,18 @@ def send_proposal(client, package_type):
             "transport_type": 1,
             "battery": roboter_battery,
             "battery_cost": random.randint(4, 8),
-            "estimated_time": random.randint(5, 8)
+            "estimated_time": random.randint(3, 4)
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
-        #logger.info(f"Proposal gesendet: {proposal}\n")
 
 def process_package(client, package_type, battery_cost, package_time, package_timestamp, transport_type):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
-    global roboter_status, roboter_battery
+    global roboter_status, roboter_battery, process_tick_counter
     try:
-       # logger.info(f"{NAME} beginnt mit der Bearbeitung von Paket Typ {package_type}.")
-        time.sleep(package_time)  # Simuliere Bearbeitungszeit
-       # logger.info(f"{NAME} hat die Bearbeitung von Paket Typ {package_type} abgeschlossen.")
         roboter_status = "busy"  # Setze Roboter auf "busy"
-
+        process_tick_counter = package_time
         current_status = {
             "name": NAME,
             "status": roboter_status
@@ -248,63 +231,15 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
         roboter_battery = max(0,roboter_battery-battery_cost)
+        
+        data = {"battery": roboter_battery,}
+        client.publish(DATA_TOPIC, json.dumps(data))
         logger.info(f"{NAME} AKKU= {roboter_battery}")
-        roboter_status = "ready"
 
-        current_status = {
-            "name": NAME,
-            "status": roboter_status
-        }
 
-        client.publish(ROBOT_STATUS_TOPIC, json.dumps(current_status))
-
-        logger.info(f"Status des {NAME}: {roboter_status}\n.")
-
-        #logger.info(f"{NAME} Daten veröffentlicht: {data}")
 
     except Exception as e:
         logger.error(f"Fehler bei der Bearbeitung des Pakets: {e}")
-
-
-        
-def on_reconfig_message(client, userdata, msg):
-    global reconfig_data
-
-    try:
-        robot_count = 0
-        fullness_count = 0
-
-        # Iteriere über alle Einträge in reconfig_data
-        for entry in reconfig_data:
-            logger.info(f"Entries: = {entry}")
-            robot_count += entry[1]  # Addiere count_robots
-            fullness_count += entry[2]  # Addiere storage_filled
-
-        logger.info(f"Gesamtberechnete Werte: robot_count = {robot_count}, fullness_count = {fullness_count}")
-    except Exception as e:
-        logger.error(f"Fehler beim Berechnen der Reconfig-Daten: {e}")
-
-
-
-def on_reconfig_data_message(client, userdata, msg):
-    """
-    Callback für Reconfig-Daten-Nachrichten.
-    Speichert die empfangenen Daten in einer 2D-Liste.
-    """
-    global reconfig_data
-    try:
-        data = json.loads(msg.payload.decode("utf-8"))
-        name = data.get("name")
-        count_robots = data.get("count_robots", 0)
-        storage_filled = data.get("storage_filled", 0)
-        if name:
-            reconfig_data.append([name, count_robots, storage_filled])
-            logger.info(f"Reconfig-Daten gespeichert: {data}")
-            logger.info(f"Reconfig-Daten: {reconfig_data}")
-        else:
-            logger.error("Reconfig-Daten ohne Namen empfangen.")
-    except json.JSONDecodeError as e:
-        logger.error(f"Fehler beim Decodieren der Reconfig-Daten-Nachricht: {e}")
 
 def main():
     """
@@ -333,14 +268,6 @@ def main():
     mqtt.subscribe(ROBOTER_REGISTER_CONFIRMATION_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_CONFIRMATION_TOPIC, on_registerConfirmationTopic)
     logger.info(f"{mqtt.name} subscribed to Tick-Topic: {ROBOTER_REGISTER_CONFIRMATION_TOPIC}")
-
-    mqtt.subscribe(REKONFIG_TIMER_TOPIC)
-    mqtt.subscribe_with_callback(REKONFIG_TIMER_TOPIC, on_reconfig_message)
-    logger.info(f"{mqtt.name} subscribed to Tick-Topic: {REKONFIG_TIMER_TOPIC}")
-
-    mqtt.subscribe(RECONFIGURE_DATA)
-    mqtt.subscribe_with_callback(RECONFIGURE_DATA, on_reconfig_data_message)
-    logger.info(f"{mqtt.name} subscribed to Tick-Topic: {RECONFIGURE_DATA}")
 
     # Starte die MQTT-Schleife
     try:

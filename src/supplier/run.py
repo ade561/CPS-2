@@ -36,7 +36,6 @@ supplier_package_type_1 = 100
 supplier_package_type_2 = 100
 tick_counter_A = 0
 tick_counter_B = 0
-valid_priorities = ["express", "standard", "post"]
 proposals = set()  # Liste der empfangenen Angebote
 registrated_robots = []
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
@@ -211,7 +210,7 @@ def on_message_tick(client, userdata, msg):
 
     ts_iso = msg.payload.decode("utf-8")
     current_tick = ts_iso
-    logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
+    #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
     data = {
         "package_type_1": supplier_package_type_1,
@@ -344,9 +343,12 @@ def main():
     mqtt.subscribe_with_callback(ROBOT_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOT_REGISTER_TOPIC}")
 
-    # mqtt.subscribe(ROBOT_STATUS_TOPIC)
-    # mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
-    # logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {ROBOT_STATUS_TOPIC}")
+    if not registrated_robots:
+        for robot in registrated_robots:
+            mqtt.subscribe(f"roboter/{robot}/status")
+            mqtt.subscribe_with_callback(f"roboter/{robot}/status", on_robot_status)
+            logger.info(f"{mqtt.name} subscribed to Robot Status Topic: {f'roboter/{robot}/status'}")
+
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
