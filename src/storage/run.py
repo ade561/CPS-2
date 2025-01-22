@@ -1,3 +1,4 @@
+import random
 import sys
 import json
 import logging
@@ -36,6 +37,12 @@ storage_package_type_2 = 0
 storage_package_type_1_entries = []
 storage_package_type_2_entries = []
 
+proposals = set()  # Liste der empfangenen Angebote
+robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
+robot_status_topics = []
+
+cfp_flag = False
+current_tick = None
 adaptive_mode = True
 registrated_robots = []  # Ändern von Set zu Liste
 storage_size = 300
@@ -71,19 +78,10 @@ def on_reconfig_message(client, userdata, msg):
     logger.info(f"Reconfig-Daten veröffentlicht: {data}")
 
 def on_message_tick(client, userdata, msg):
+    global cfp_flag
     ts_iso = msg.payload.decode("utf-8")
-    logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
-    if adaptive_mode == True:
-        storage_package_type_1_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
-        storage_package_type_2_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
-
-        logger.info(f"Aktualisierter Sorted-Entries: TYP 1: {storage_package_type_1_entries}")
-        logger.info(f"Aktualisierter Sorted-Entries: TYP 2: {storage_package_type_2_entries}")
-
-
-
-    # Nur aktuelle Bestände veröffentlichen, ohne sie zu ändern
+    ## PUBLISH DATA ##
     data = {
         "package_type_1_Entries": len(storage_package_type_1_entries),
         "package_type_2_Entries": len(storage_package_type_2_entries),
@@ -93,7 +91,45 @@ def on_message_tick(client, userdata, msg):
     }
     client.publish(DATA_TOPIC, json.dumps(data))
     logger.info(f"Bestand veröffentlicht (vor Verarbeitung): {data}")
+    logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
+    if robot_status_topics:
+        for topic in robot_status_topics:
+            client.message_callback_add(topic, on_robot_status)
+
+    if adaptive_mode == True:
+        storage_package_type_1_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+        storage_package_type_2_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+
+        # logger.info(f"Aktualisierter Sorted-Entries: TYP 1: {storage_package_type_1_entries}")
+        # logger.info(f"Aktualisierter Sorted-Entries: TYP 2: {storage_package_type_2_entries}")
+
+    if not registrated_robots:
+        logger.info("Keine Roboter Roboter haben sich registriert. CfPs werden nicht gesendet.")
+        return
+    
+    # Überprüfen, ob mindestens ein Roboter "ready" ist
+    if not any(status == "ready" for status in robot_statuses.values()):
+        logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
+        return
+
+    
+    if cfp_flag != True:
+        if storage_package_type_1 > 0 and storage_package_type_2 <= 0:
+            random_package = 1
+        elif storage_package_type_1 <= 0 and storage_package_type_2 > 0:
+            random_package = 2
+        else:
+            random_package = 1 if random.random() < 0.5 else 2
+        if storage_package_type_1 > 0 and random_package == 1:
+            cfp_flag = True
+            quantity_first_entry = storage_package_type_1_entries[0][3]
+            call_for_proposals(client, CFP_TOPIC, random_package, quantity_first_entry,ts_iso)
+        
+        elif storage_package_type_2 > 0 and random_package == 2:
+            cfp_flag = True
+            quantity_seconde_entry = storage_package_type_2_entries[0][3]
+            call_for_proposals(client, CFP_TOPIC, random_package, quantity_seconde_entry,ts_iso)
 
 def on_message_robot(client, userdata, msg):
     global storage_package_type_1, storage_package_type_2
@@ -104,7 +140,7 @@ def on_message_robot(client, userdata, msg):
         package_type = processed_data.get('package_type')
         quantity = processed_data.get('quantity')
 
-        logger.info(f"Empfangene Daten: Transportart: {transport_type}, Zeitstempel: {timestamp}, Pakettyp: {package_type}, Quantity: {quantity}")
+        # logger.info(f"Empfangene Daten: Transportart: {transport_type}, Zeitstempel: {timestamp}, Pakettyp: {package_type}, Quantity: {quantity}")
 
         global storage_package_type_1, storage_package_type_2
         if processed_data.get('storage') == NAME and processed_data.get('supplier') not in [None, '']:
@@ -121,32 +157,69 @@ def on_message_robot(client, userdata, msg):
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Nachricht: {e}")
 
-        logger.info(f"Aktualisierter Lagerbestand: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Fehler beim Decodieren der Nachricht: {e}")
-
-
 def on_registration(client, userdata, msg):
     global registrated_robots
     register_data = json.loads(msg.payload.decode("utf-8"))
 
     # Beispiel: Nehmen wir an, `register_data` enthält eine eindeutige "id" des Roboters.
     robot_id = register_data.get("name")
+    robot_status = register_data.get("status")
+    target_storage = register_data.get("storage")
 
-    if robot_id and register_data.get("storage") == NAME:
-        if robot_id not in registrated_robots:
-            registrated_robots.append(robot_id)  # Nur die ID hinzufügen
-            logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
+    if not robot_id or not robot_status:
+        logger.error(f"Ungültige Registrierungsdaten empfangen: {register_data}")
+        return
 
-    elif robot_id and register_data.get("storage") != NAME:
-        if robot_id in registrated_robots:
-            registrated_robots.remove(robot_id)
-        else:
-            logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
+    if target_storage != NAME:
+        logger.warning(f"Roboter {robot_id} versucht sich bei falschem Supplier zu registrieren.")
+        return
 
-    logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
+    if robot_id in registrated_robots:
+        logger.info(f"Roboter {robot_id} ist bereits registriert. Status wird aktualisiert.")
+        return
 
+    logger.info(f"Registrierungsbestätigung an Roboter {robot_id} gesendet.")
+    registrated_robots.append(robot_id)
+    robot_statuses[robot_id] = robot_status
+    logger.info(f"Roboter {robot_id} erfolgreich registriert.")
+    logger.info(f"Aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
+
+    robot_status_topic = f"roboter/{robot_id}/status"
+    client.subscribe(robot_status_topic)
+    robot_status_topics.append(robot_status_topic)
+    logger.info(f"Subscribed to Robot status Topic: {robot_status_topic}")
+
+def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
+    global cfp_flag
+    """
+    Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
+    """
+    cfp_data = {
+        "package_type": package_type,
+        "quantity": quantity,
+        "timestamp": timestamp
+    }
+
+    client.publish(cfp_topic, json.dumps(cfp_data))
+    cfp_flag = False
+
+def on_robot_status(client, userdata, msg):
+    """
+    Callback für Ladezustandsnachrichten von Robotern.
+    Aktualisiert den Zustand der Roboter.
+    """
+    global robot_statuses
+
+    try:
+        status_data = json.loads(msg.payload.decode("utf-8"))
+        robot_name = status_data.get("name")
+        status = status_data.get("status")
+
+        if robot_name in registrated_robots:
+            if robot_name and status:
+                robot_statuses[robot_name] = status
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Decodieren der Ladezustandsnachricht: {e}")
 
 def main():
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
@@ -167,6 +240,14 @@ def main():
     mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOTER_REGISTER_TOPIC}")
+
+    # mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
+    # mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
+    # logger.info(f"{mqtt.name} subscribed to Robot proposal Topic: {ROBOTER_PROPOSAL_TOPIC}")
+
+    # mqtt.subscribe(PROCESSED_TOPIC)
+    # mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
+    # logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
 
     try:
         logger.info("Starting MQTT loop...")

@@ -65,8 +65,6 @@ def on_robot_status(client, userdata, msg):
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Ladezustandsnachricht: {e}")
 
-
-
 def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
     """
     Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
@@ -121,7 +119,6 @@ def on_message_proposals(client, userdata, msg):
     except Exception as e:
         logger.error(f"Ein unerwarteter Fehler in on_message_proposals: {e}")
 
-
 def on_processed_message(client, userdata, msg):
     """
     Callback für Bearbeitungsbestätigungen von Robotern.
@@ -143,7 +140,6 @@ def on_processed_message(client, userdata, msg):
             logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
-
 
 def calculate_score(proposal):
     """
