@@ -11,7 +11,7 @@ NAME = os.environ['EC_NAME']
 
 # MQTT Topics
 DATA_TOPIC = os.environ['EC_MQTT_TOPIC']
-CFP_TOPIC = os.environ.get('CFP_TOPIC')  # CfP-Thema
+SUPPLIER_CFP_TOPIC = "supplier/+/cfp"  # CfP-Thema
 TICK_TOPIC = "tickgen/tick"
 
 ROBOT_PROPOSAL_TOPIC = os.environ.get('ROBOTER_PROPOSAL_TOPIC')
@@ -42,7 +42,8 @@ current_supplier = ""
 reconfig_data = []  # Reconfig-Daten als Feld
 charging_tick_counter = 0;
 process_tick_counter = 0;
-
+supplier_cfp_topics = []
+storage_cfp_topics = []
 # Logging-Konfiguration
 logging.basicConfig(
     level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -57,7 +58,7 @@ def register_robot(client):
     """
     Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
     """
-    global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier
+    global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier,supplier_cfp_topic,storage_cfp_topic
     registerNumber = random.randint(1, int(currentNumberOfSuppliers))
 
     current_supplier = f"supplier/{registerNumber}"
@@ -76,6 +77,14 @@ def register_robot(client):
         "supplier": current_supplier
     }
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
+
+    supplier_cfp_topic = f"{current_supplier}/cfp"
+    storage_cfp_topic = f"{current_storage}/cfp"
+
+    client.subscribe(supplier_cfp_topic)
+    supplier_cfp_topics.append(supplier_cfp_topic)
+    client.subscribe(storage_cfp_topic)
+    storage_cfp_topics.append(storage_cfp_topic)
     lastRegisteredStorage = current_storage
     lastRegisteredSupplier = current_supplier
 
@@ -145,6 +154,14 @@ def on_tick_message(client, userdata, msg):
     data = {"battery": roboter_battery,}
     client.publish(DATA_TOPIC, json.dumps(data))
     
+    if supplier_cfp_topics:
+        for topic in supplier_cfp_topics:
+            client.message_callback_add(topic, on_cfp_message)
+
+    if storage_cfp_topics:
+        for topic in storage_cfp_topics:
+            client.message_callback_add(topic, on_cfp_message)
+
     if roboter_battery < 20:
         if charging_tick_counter  >= 0:
             logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
@@ -247,13 +264,11 @@ def main():
     """
     logger.info(f"Initializing MQTT client with name: {NAME}")
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
-
-    logger.info(f"STATUS_TOPIC: {ROBOT_STATUS_TOPIC}")
-    logger.info(f"ROBOT_RE    GISTER_TOPIC: {ROBOT_REGISTER_TOPIC}")    
+ 
     # CfP-Topic abonnieren
-    mqtt.subscribe(CFP_TOPIC)
-    mqtt.subscribe_with_callback(CFP_TOPIC, on_cfp_message)
-    logger.info(f"{mqtt.name} subscribed to CfP-Topic: {CFP_TOPIC}")
+    mqtt.subscribe(SUPPLIER_CFP_TOPIC)
+    mqtt.subscribe_with_callback(SUPPLIER_CFP_TOPIC, on_cfp_message)
+    logger.info(f"{mqtt.name} subscribed to CfP-Topic: {SUPPLIER_CFP_TOPIC}")
 
     # Award-Topic abonnieren
     mqtt.subscribe(AWARD_TOPIC)

@@ -70,6 +70,7 @@ def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
     Veröffentlicht eine Call-for-Proposals (CfP)-Anfrage mit benutzerdefinierter Priorität.
     """
     cfp_data = {
+        "name": NAME,
         "package_type": package_type,
         "quantity": quantity,
         "timestamp": timestamp

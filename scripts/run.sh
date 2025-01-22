@@ -53,7 +53,6 @@ for i in $(seq 1 $NUM_ROBOTS); do
     -e NUMBER_OF_STORAGES=$NUM_STORAGES \
     -e NUMBER_OF_SUPPLIERS=$NUM_SUPPLIERS \
     -e PROCESSED_TOPIC="roboter/$i/processed" \
-    -e CFP_TOPIC="supplier/1/cfp" \
     -e ROBOTER_PROPOSAL_TOPIC="roboter/$i/proposal" \
     -e ROBOTER_REGISTER_TOPIC="roboter/$i/register" \
     -e ROBOTER_REGISTER_CONFIRMATION_TOPIC="roboter/roboter_$i/registerConfirmation" \
