@@ -31,7 +31,7 @@ storage_package_type_2 = 0
 storage_package_type_1_entries = []
 storage_package_type_2_entries = []
 
-adaptive_mode = False
+adaptive_mode = True
 registrated_robots = []  # Ändern von Set zu Liste
 storage_size = 300
 
@@ -69,6 +69,15 @@ def on_message_tick(client, userdata, msg):
     ts_iso = msg.payload.decode("utf-8")
     logger.info(f"Tick empfangen mit Timestamp: {ts_iso}")
 
+    if adaptive_mode == True:
+        storage_package_type_1_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+        storage_package_type_2_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+
+        logger.info(f"Aktualisierter Sorted-Entries: TYP 1: {storage_package_type_1_entries}")
+        logger.info(f"Aktualisierter Sorted-Entries: TYP 2: {storage_package_type_2_entries}")
+
+
+
     # Nur aktuelle Bestände veröffentlichen, ohne sie zu ändern
     data = {
         "package_type_1_Entries": len(storage_package_type_1_entries),
@@ -101,7 +110,6 @@ def on_message_robot(client, userdata, msg):
                 storage_package_type_2_entries.append([transport_type, timestamp, package_type,quantity])
                 storage_package_type_2 = min(100,storage_package_type_2+quantity)
 
-        logger.info(f"Aktualisierter Entries: Typ 1: {storage_package_type_1_entries}, Typ 2: {storage_package_type_2_entries}")
         logger.info(f"Aktualisierter Lagerbestand: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
 
 
@@ -147,9 +155,9 @@ def main():
     mqtt.subscribe_with_callback(REKONFIG_TIMER_TOPIC, on_reconfig_message)
     logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {REKONFIG_TIMER_TOPIC}")
 
-    mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
-    mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode)
-    logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
+    # mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
+    # mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode)
+    # logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
 
     mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)

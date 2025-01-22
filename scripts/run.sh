@@ -27,6 +27,9 @@ for i in $(seq 1 $NUM_STORAGES); do
   docker run -d --net=cps-net \
     -e EC_NAME="storage/$i" \
     -e EC_MQTT_TOPIC="storage/$i/data" \
+    -e CFP_TOPIC="storage/$i/cfp"   \
+    -e ROBOTER_PROPOSAL_TOPIC="storage/$i/proposal"\
+    -e AWARD_TOPIC="storage/$i/award" \
     --name "storage_$i" storage:0.1
 done
  
