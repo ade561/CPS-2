@@ -25,8 +25,12 @@ REKONFIG_TIMER_TOPIC = "rekonfig/time"
 RECONFIGURE_TOPIC = NAME + "/reconfigure"
 
 mqtt = None
-storage_package_type_1 = []
-storage_package_type_2 = []
+storage_package_type_1 = 0
+storage_package_type_2 = 0
+
+storage_package_type_1_entries = []
+storage_package_type_2_entries = []
+
 adaptive_mode = False
 registrated_robots = []  # Ändern von Set zu Liste
 storage_size = 300
@@ -53,9 +57,9 @@ def on_reconfig_message(client, userdata, msg):
         "name": NAME,
         "count_robots": len(registrated_robots),
         "registered_robots": registrated_robots,
-        "storage_filled": len(storage_package_type_1) + len(storage_package_type_2)  / storage_size * 100,
-        "count_package_type_1": len(storage_package_type_1),
-        "count_package_type_2": len(storage_package_type_2)
+        "storage_filled": len(storage_package_type_1_entries) + len(storage_package_type_2_entries)  / storage_size * 100,
+        "count_package_type_1": len(storage_package_type_1_entries),
+        "count_package_type_2": len(storage_package_type_2_entries)
     }
 
     client.publish(RECONFIGURE_TOPIC, json.dumps(data))
@@ -67,8 +71,10 @@ def on_message_tick(client, userdata, msg):
 
     # Nur aktuelle Bestände veröffentlichen, ohne sie zu ändern
     data = {
-        "package_type_1": len(storage_package_type_1),
-        "package_type_2": len(storage_package_type_2),
+        "package_type_1_Entries": len(storage_package_type_1_entries),
+        "package_type_2_Entries": len(storage_package_type_2_entries),
+        "package_type_1": storage_package_type_1,
+        "package_type_2": storage_package_type_2,
         "timestamp": ts_iso
     }
     client.publish(DATA_TOPIC, json.dumps(data))
@@ -76,6 +82,7 @@ def on_message_tick(client, userdata, msg):
 
 
 def on_message_robot(client, userdata, msg):
+    global storage_package_type_1, storage_package_type_2
     try: 
         processed_data = json.loads(msg.payload.decode("utf-8"))
         transport_type = processed_data.get('transport_type')
@@ -83,16 +90,20 @@ def on_message_robot(client, userdata, msg):
         package_type = processed_data.get('package_type')
         quantity = processed_data.get('quantity')
 
-        logger.info(f"Empfangene Daten: Transportart: {transport_type}, Zeitstempel: {timestamp}, Pakettyp: {package_type}")
+        logger.info(f"Empfangene Daten: Transportart: {transport_type}, Zeitstempel: {timestamp}, Pakettyp: {package_type}, Quantity: {quantity}")
 
         global storage_package_type_1, storage_package_type_2
         if processed_data.get('storage') == NAME and processed_data.get('supplier') not in [None, '']:
             if package_type == 1:
-                storage_package_type_1.append([transport_type, timestamp, package_type,quantity])
+                storage_package_type_1_entries.append([transport_type, timestamp, package_type,quantity])
+                storage_package_type_1 = min(100, storage_package_type_1+quantity)
             elif package_type == 2:
-                storage_package_type_2.append([transport_type, timestamp, package_type,quantity])
+                storage_package_type_2_entries.append([transport_type, timestamp, package_type,quantity])
+                storage_package_type_2 = min(100,storage_package_type_2+quantity)
 
+        logger.info(f"Aktualisierter Entries: Typ 1: {storage_package_type_1_entries}, Typ 2: {storage_package_type_2_entries}")
         logger.info(f"Aktualisierter Lagerbestand: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
+
 
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Nachricht: {e}")
@@ -114,12 +125,10 @@ def on_registration(client, userdata, msg):
         if robot_id not in registrated_robots:
             registrated_robots.append(robot_id)  # Nur die ID hinzufügen
             logger.info(f"Roboter mit ID: {robot_id} hat sich registriert!")
-        else:
-            logger.info(f"Roboter mit ID: {robot_id} ist bereits registriert.")
+
     elif robot_id and register_data.get("storage") != NAME:
         if robot_id in registrated_robots:
             registrated_robots.remove(robot_id)
-            logger.warning(f"Roboter mit ID: {robot_id} wurde entfernt, da der Lieferant nicht übereinstimmt.")
         else:
             logger.warning(f"Ungültige Registrierungsdaten empfangen: {register_data}")
 

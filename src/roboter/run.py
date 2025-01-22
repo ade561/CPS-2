@@ -58,11 +58,10 @@ def register_robot(client):
     Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
     """
     global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier
-    numberOfStorage = random.randint(1, int(currentNumberOfStorages))
-    numberOfSupplier = random.randint(1, int(currentNumberOfSuppliers))
+    registerNumber = random.randint(1, int(currentNumberOfSuppliers))
 
-    current_supplier = f"supplier/{numberOfSupplier}"
-    current_storage = f"storage/{numberOfStorage}"
+    current_supplier = f"supplier/{registerNumber}"
+    current_storage = f"storage/{registerNumber}"
 
     logger.info(f"CURRENT SUPPLIER: {current_supplier}, CURRENT STORAGE: {current_storage}")
     if current_supplier == lastRegisteredSupplier and current_storage == lastRegisteredStorage:

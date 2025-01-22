@@ -276,7 +276,6 @@ def on_registration(client, userdata, msg):
             return
         else:
 
-                    # Sende Bestätigung an den Roboter
             confirmation = {
                 "name": robot_id,
                 "status": "registered",
