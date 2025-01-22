@@ -121,13 +121,13 @@ def on_award_message(client, userdata, msg):
         award_data = json.loads(msg.payload.decode("utf-8"))
 
         # Überprüfen, ob die notwendigen Felder vorhanden sind
-        if not all(key in award_data for key in ["winner", "package_type", "transport_type", "battery", "battery_cost", "estimated_time"]):
+        if not all(key in award_data for key in ["winner", "package_type", "transport_type", "battery", "battery_cost", "estimated_time","quantity"]):
             logger.error("Ungültige Award-Daten. Auftrag wird ignoriert.")
             return
 
         if award_data["winner"] == NAME:
             logger.info(f"Empfangene Award-Daten: {award_data}")
-            process_package(client, award_data["package_type"], award_data["battery_cost"], award_data["estimated_time"], award_data["timestamp"], award_data["transport_type"])
+            process_package(client, award_data["package_type"], award_data["battery_cost"], award_data["estimated_time"], award_data["timestamp"], award_data["transport_type"],award_data["quantity"])
         else:
             logger.info(f"{NAME} hat den Auftrag nicht erhalten. Ignoriere Auftrag.")
     except json.JSONDecodeError as e:
@@ -204,7 +204,7 @@ def send_proposal(client, package_type):
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
 
-def process_package(client, package_type, battery_cost, package_time, package_timestamp, transport_type):
+def process_package(client, package_type, battery_cost, package_time, package_timestamp, transport_type,quantity):
     """
     Simuliert die Verarbeitung eines Pakets und sendet eine Bestätigung.
     """
@@ -226,7 +226,8 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
             "status": "completed",
             "storage": current_storage,
             "supplier": current_supplier,
-            "timestamp": package_timestamp
+            "timestamp": package_timestamp,
+            "quantity": quantity
         }
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")

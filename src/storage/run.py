@@ -81,15 +81,16 @@ def on_message_robot(client, userdata, msg):
         transport_type = processed_data.get('transport_type')
         timestamp = processed_data.get('timestamp')
         package_type = processed_data.get('package_type')
+        quantity = processed_data.get('quantity')
 
         logger.info(f"Empfangene Daten: Transportart: {transport_type}, Zeitstempel: {timestamp}, Pakettyp: {package_type}")
 
         global storage_package_type_1, storage_package_type_2
         if processed_data.get('storage') == NAME and processed_data.get('supplier') not in [None, '']:
             if package_type == 1:
-                storage_package_type_1.append([transport_type, timestamp, package_type])
+                storage_package_type_1.append([transport_type, timestamp, package_type,quantity])
             elif package_type == 2:
-                storage_package_type_2.append([transport_type, timestamp, package_type])
+                storage_package_type_2.append([transport_type, timestamp, package_type,quantity])
 
         logger.info(f"Aktualisierter Lagerbestand: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
 

@@ -42,7 +42,8 @@ robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "chargin
 cfp_flag = False
 adaptive_mode = True
 current_tick = None
-robot_status_topics = []  
+robot_status_topics = []
+random_quantity = 0;  
 
 
 def on_robot_status(client, userdata, msg):
@@ -77,7 +78,6 @@ def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
     }
 
     client.publish(cfp_topic, json.dumps(cfp_data))
-   # logger.info(f"CfP veröffentlicht auf {cfp_topic}: {cfp_data}")
 
 def on_message_proposals(client, userdata, msg):
     global proposals,adaptive_mode
@@ -107,9 +107,7 @@ def on_message_proposals(client, userdata, msg):
         # Proposal zum Set hinzufügen
         if proposal_tuple not in proposals:
             proposals.add(proposal_tuple)
-            #logger.info(f"Proposal hinzugefügt: {proposal_tuple}. Anzahl: {len(proposals)}")
-        # else:
-        #     logger.info(f"Proposal von {proposal['name']} wird ignoriert (bereits vorhanden).")
+
 
         # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
         ready_robots_count = sum(1 for status in robot_statuses.values() if status == "ready")
@@ -136,12 +134,12 @@ def on_processed_message(client, userdata, msg):
 
         package_type = processed_data.get("package_type")
         supplier_name = processed_data.get("supplier")
-
+        quantity = processed_data.get("quantity")
         if supplier_name == NAME:
             if package_type == 1 and supplier_package_type_1 > 0:
-                supplier_package_type_1 -= 1
+                supplier_package_type_1 = max(0,supplier_package_type_1-quantity)
             elif package_type == 2 and supplier_package_type_1 > 0:
-                supplier_package_type_2 -= 1
+                supplier_package_type_2 = max(0,supplier_package_type_2-quantity)
             logger.info(f"Lagerbestand aktualisiert: Typ 1: {supplier_package_type_1}, Typ 2: {supplier_package_type_2}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
@@ -154,27 +152,22 @@ def calculate_score(proposal):
     """
     # Gewichtungen
     transport_weight = 0.45 if proposal[1] == "express" else 0.2      
-    #battery_weight = 0.25        
     battery_cost_weight = 0.3    
     estimated_time_weight = 0.25  
 
     # Berechnung des Scores (alle positiv gewichtet)
     transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
-    #battery_score = battery_weight * proposal[2]           # Höherer Batteriestand = besser
     battery_cost_score = -battery_cost_weight * proposal[3] # Niedrigere Kosten = besser
     estimated_time_score = -estimated_time_weight * proposal[4]  # Kürzere Zeit = besser
 
     # Gesamtscore
     score = (
         transport_score +
-        #battery_score +
         battery_cost_score +
         estimated_time_score
     )
     
     return abs(score)
-
-
 
 def select_winner_and_award(client,package_type):
     global proposals,cfp_flag,current_tick
@@ -193,7 +186,8 @@ def select_winner_and_award(client,package_type):
         "battery_cost": winner[3],    # Batteriekosten
         "estimated_time": winner[4],   # Bearbeitungszeit
         "package_type": package_type,
-        "timestamp": current_tick     # Zeitstempel
+        "timestamp": current_tick,     # Zeitstempel
+        "quantity": random_quantity
     }
     client.publish(AWARD_TOPIC, json.dumps(award_message))
     logger.info(f"Award vergeben an: {award_message}\n")
@@ -201,15 +195,11 @@ def select_winner_and_award(client,package_type):
     # Leere das Set der Proposals nach der Vergabe
     proposals.clear()
 
-
-#TODO check how many Roboter registerd. If none publish it and ask for some. the one with the most give Robots
 def on_message_tick(client, userdata, msg):
     global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick,registrated_robots
 
     ts_iso = msg.payload.decode("utf-8")
     current_tick = ts_iso
-    #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
-
 
     if robot_status_topics:
         for topic in robot_status_topics:
@@ -257,13 +247,12 @@ def on_message_tick(client, userdata, msg):
             random_package = 1 if random.random() < 0.5 else 2
         cfp_flag = True
         if supplier_package_type_1 > 0 and random_package == 1:
-            random_quantity = random.randint(3, min(6, supplier_package_type_1))
+            random_quantity = random.randint(3, min(6, supplier_package_type_1)) if supplier_package_type_1 >= 3 else supplier_package_type_1
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
         
         elif supplier_package_type_2 > 0 and random_package == 2:
-            random_quantity = random.randint(3, min(6, supplier_package_type_2))
+            random_quantity = random.randint(3, min(6, supplier_package_type_2)) if supplier_package_type_2 >= 3 else supplier_package_type_2
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
-
 
 def on_registration(client, userdata, msg):
     global registrated_robots, robot_statuses
@@ -316,8 +305,6 @@ def on_registration(client, userdata, msg):
     except Exception as e:
         logger.error(f"Ein unerwarteter Fehler bei der Registrierung: {e}")
 
-
-
 def on_adaptive_mode_message(client, userdata, msg):
     global adaptive_mode
     try:
@@ -349,11 +336,6 @@ def main():
     mqtt.subscribe_with_callback(ROBOT_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOT_REGISTER_TOPIC}")
     logger.info(f"aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
-
-
-    mqtt.subscribe(ROBOT_STATUS_TOPIC)
-    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
-    logger.info(f"{mqtt.name} subscribed to Robot status Topic: {ROBOT_STATUS_TOPIC}")
 
     mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
