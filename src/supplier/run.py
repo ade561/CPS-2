@@ -29,7 +29,11 @@ PROCESSED_TOPIC = 'roboter/+/processed'  # Thema für Bearbeitungsbestätigungen
 ROBOT_REGISTER_TOPIC='roboter/+/register'
 ROBOT_STATUS_TOPIC='roboter/+/status'
 ADAPTIVE_MODE_TOPIC = os.environ.get('ADAPTIVE_MODE_TOPIC', 'mgmt/adaptive_mode')
-RECONFIGURE_TOPIC = NAME + "/reconfigure"
+
+ROBOT_STATUS_DATA = "+/+/status"
+#Reconfigure
+RECONFIG_TIMER_TOPIC = "reconfig/time"
+RECONFIG_DATA_TOPIC = NAME + '/reconfig'
 
 # Variablen
 supplier_package_type_1 = 100
@@ -45,6 +49,7 @@ current_tick = None
 robot_status_topics = []
 random_quantity = 0;  
 
+registred_flag = False
 
 def on_robot_status(client, userdata, msg):
     """
@@ -193,16 +198,12 @@ def select_winner_and_award(client,package_type):
     proposals.clear()
 
 def on_message_tick(client, userdata, msg):
-    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick,registrated_robots
+    global supplier_package_type_1, supplier_package_type_2, tick_counter_A, tick_counter_B, random_quantity, robot_statuses,cfp_flag,current_tick,registrated_robots, registred_flag
 
     ts_iso = msg.payload.decode("utf-8")
     current_tick = ts_iso
-
-    if robot_status_topics:
-        for topic in robot_status_topics:
-            client.message_callback_add(topic, on_robot_status)
-
     
+
     data = {
         "package_type_1": supplier_package_type_1,
         "package_type_2": supplier_package_type_2,
@@ -252,7 +253,7 @@ def on_message_tick(client, userdata, msg):
             call_for_proposals(client, CFP_TOPIC, random_package, random_quantity,ts_iso)
 
 def on_registration(client, userdata, msg):
-    global registrated_robots, robot_statuses
+    global registrated_robots, robot_statuses, NAME
 
     try:
         register_data = json.loads(msg.payload.decode("utf-8"))
@@ -260,42 +261,26 @@ def on_registration(client, userdata, msg):
         robot_status = register_data.get("status")
         target_supplier = register_data.get("supplier")
 
-        if not robot_id or not robot_status:
-            logger.error(f"Ungültige Registrierungsdaten empfangen: {register_data}")
-            return
+        if target_supplier == NAME:
+            if target_supplier not in register_data:
+                registrated_robots.append(target_supplier)
+                robot_statuses[robot_id] = robot_status
 
-        if target_supplier != NAME:
-            logger.warning(f"Roboter {robot_id} versucht sich bei falschem Supplier zu registrieren.")
-            return
-
-        if robot_id in registrated_robots:
-            logger.info(f"Roboter {robot_id} ist bereits registriert. Status wird aktualisiert.")
-            return
-        else:
-
-            confirmation = {
+                confirmation = {
                 "name": robot_id,
                 "status": "registered",
                 "supplier": NAME
-            }
+                }
 
-            confirmation_topic = f"roboter/{robot_id}/registerConfirmation"
-            client.publish(confirmation_topic, json.dumps(confirmation))
-            logger.info(f"Registrierungsbestätigung an Roboter {robot_id} auf Topic {confirmation_topic} gesendet.")
+                confirmation_topic = f"roboter/{robot_id}/registerConfirmation"
+                client.publish(confirmation_topic, json.dumps(confirmation))
+                logger.info(f"Roboter {robot_id} erfolgreich registriert.")
 
-
-            logger.info(f"Registrierungsbestätigung an Roboter {robot_id} gesendet.")
-            registrated_robots.append(robot_id)
-            robot_statuses[robot_id] = robot_status
-            logger.info(f"Roboter {robot_id} erfolgreich registriert.")
-            logger.info(f"Aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
-
-            robot_status_topic = f"roboter/{robot_id}/status"
-            client.subscribe(robot_status_topic)
-            robot_status_topics.append(robot_status_topic)
-            logger.info(f"Subscribed to Robot status Topic: {robot_status_topic}")
-
-
+        else: 
+            if robot_id in registrated_robots:
+                registrated_robots.remove(robot_id)
+            if robot_id in robot_statuses:
+                robot_statuses.pop(robot_id)
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Verarbeiten der Registrierungsdaten: {e}")
     except Exception as e:
@@ -314,6 +299,22 @@ def on_adaptive_mode_message(client, userdata, msg):
         logger.info(f"Adaptiver Modus gesetzt auf: {adaptive_mode}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Nachricht für den adaptiven Modus: {e}")
+     
+def on_message_reconfig_timer(client, userdata, msg):
+    global NAME, registrated_robots, supplier_package_type_1, supplier_package_type_2
+
+    message = msg.payload.decode("utf-8").strip().lower()
+    if message == '1':
+
+        data = {
+        "name": NAME,
+        "count_robots": len(registrated_robots),
+        "registered_robots": registrated_robots,
+        "fullness": ((supplier_package_type_1) + (supplier_package_type_1)) / 200,
+        }
+
+        client.publish(RECONFIG_DATA_TOPIC, json.dumps(data))
+        logger.info(f"Reconfig-Daten veröffentlicht: {data}")
 
 def main():
     """
@@ -340,6 +341,14 @@ def main():
     mqtt.subscribe(PROCESSED_TOPIC)
     mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
     logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
+
+    mqtt.subscribe(RECONFIG_TIMER_TOPIC)
+    logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
+    mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
+
+    mqtt.subscribe(ROBOT_STATUS_TOPIC)
+    logger.info(f"Subscribing to tick topic: {ROBOT_STATUS_TOPIC}")
+    mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
 
     # mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
     # mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)

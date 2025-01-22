@@ -22,14 +22,12 @@ ROBOT_STATUS_TOPIC = os.environ.get('ROBOT_STATUS_TOPIC')
 AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
 PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
 
-REKONFIG_TIMER_TOPIC = "rekonfig/time"
+RECONFIG_TIMER_TOPIC = "reconfig/time"
 RECONFIGURE_DATA = "+/+/reconfigure"
 
 # Variablen
 lastRegisteredSupplier = ""
 lastRegisteredStorage = ""
-currentNumberOfSuppliers = os.environ.get('NUMBER_OF_SUPPLIERS')
-currentNumberOfStorages = os.environ.get('NUMBER_OF_STORAGES')
 last_cfp_data = None  # Zwischenspeicherung der letzten CfP-Daten
 current_cfp_data = None
 roboter_status = "ready"  # Standardstatus des Roboters
@@ -37,13 +35,11 @@ roboter_battery = 100
 register_flag = False
 charging_flag = False
 transport_type = ["express", "standard"]
-current_storage = ""
-current_supplier = ""
+current_storage = "storage/1"
+current_supplier = "supplier/1"
 reconfig_data = []  # Reconfig-Daten als Feld
-charging_tick_counter = 0;
-process_tick_counter = 0;
-supplier_cfp_topics = []
-storage_cfp_topics = []
+charging_tick_counter = 0
+process_tick_counter = 0
 # Logging-Konfiguration
 logging.basicConfig(
     level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -55,14 +51,7 @@ logging.basicConfig(
 logger = logging.getLogger(NAME)
 
 def register_robot(client):
-    """
-    Führt die Registrierung des Roboters durch und veröffentlicht den initialen Status.
-    """
     global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier,supplier_cfp_topic,storage_cfp_topic
-    registerNumber = random.randint(1, int(currentNumberOfSuppliers))
-
-    current_supplier = f"supplier/{registerNumber}"
-    current_storage = f"storage/{registerNumber}"
 
     logger.info(f"CURRENT SUPPLIER: {current_supplier}, CURRENT STORAGE: {current_storage}")
     if current_supplier == lastRegisteredSupplier and current_storage == lastRegisteredStorage:
@@ -76,15 +65,19 @@ def register_robot(client):
         "storage": current_storage,
         "supplier": current_supplier
     }
+
     client.publish(ROBOT_REGISTER_TOPIC, json.dumps(register_data))
 
-    supplier_cfp_topic = f"{current_supplier}/cfp"
-    storage_cfp_topic = f"{current_storage}/cfp"
+    if lastRegisteredStorage == None or lastRegisteredStorage == "":
+        client.unsubscribe(f"{lastRegisteredStorage}/cfp", on_cfp_message)
+    else:
+        client.unsubscribe(f"{lastRegisteredStorage}/cfp", on_cfp_message)
 
-    client.subscribe(supplier_cfp_topic)
-    supplier_cfp_topics.append(supplier_cfp_topic)
-    client.subscribe(storage_cfp_topic)
-    storage_cfp_topics.append(storage_cfp_topic)
+    if current_supplier == None or current_supplier == "":
+        client.message_callback_add(f"{current_supplier}/cfp", on_cfp_message)
+    else:
+        client.message_callback_add(f"{current_storage}/cfp", on_cfp_message)
+
     lastRegisteredStorage = current_storage
     lastRegisteredSupplier = current_supplier
 
@@ -142,25 +135,17 @@ def on_award_message(client, userdata, msg):
         logger.error(f"Fehler beim Decodieren der Award-Nachricht: {e}")
 
 def on_tick_message(client, userdata, msg):
-    """
-    Callback für Tick-Nachrichten.
-    Prüft, ob ein Proposal basierend auf den letzten CfP-Daten gesendet werden soll.
-    """
     global last_cfp_data, roboter_battery,charging_tick_counter,roboter_status,process_tick_counter
+
 
     if register_flag == False:
         register_robot(client)
+
     # Akku prüfen
     data = {"battery": roboter_battery,}
     client.publish(DATA_TOPIC, json.dumps(data))
     
-    if supplier_cfp_topics:
-        for topic in supplier_cfp_topics:
-            client.message_callback_add(topic, on_cfp_message)
 
-    if storage_cfp_topics:
-        for topic in storage_cfp_topics:
-            client.message_callback_add(topic, on_cfp_message)
 
     if roboter_battery < 20:
         if charging_tick_counter  >= 0:
@@ -257,7 +242,121 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
 
     except Exception as e:
         logger.error(f"Fehler bei der Bearbeitung des Pakets: {e}")
+#############Reconfigure##############################
 
+####Neues Position berechnen ########
+def sum_robots(data):
+    return sum(item[1] for item in data if 'storage' in item[0])
+
+def sum_fullness(data):
+    return sum(item[3] for item in data)
+
+def relativ_fullness(data, total_fullness):
+    for item in data:
+        item[3] = item[3] / total_fullness
+    return data
+
+def sort_reconfig_data(data):
+    data.sort(key=lambda x: (x[0].split('_')[0].lower(), int(x[0].split('_')[1])))
+    return data
+
+def calculate_robots(data):
+    total_robots = sum_robots(data)
+    total_fullness = sum_fullness(data)
+    data = relativ_fullness(data, total_fullness)
+
+    proportional_robots = [item[3] * total_robots for item in data]
+    rounded_robots = [round(num) for num in proportional_robots]
+    difference = total_robots - sum(rounded_robots)
+
+    if difference != 0:
+        adjustments = sorted(enumerate(proportional_robots), key=lambda x: x[1] - round(x[1]), reverse=(difference > 0))
+        for i in range(abs(difference)):
+            idx = adjustments[i][0]
+            rounded_robots[idx] += 1 if difference > 0 else -1
+
+    for i, item in enumerate(data):
+        item[1] = rounded_robots[i]
+
+    return sort_reconfig_data(data)
+
+def calculate_moving(data):
+    data = calculate_robots(data)
+    excess_robots = []
+
+    for entry in data:
+        while len(entry[2]) > entry[1]:
+            excess_robots.append(entry[2].pop())
+
+    for entry in data:
+        while len(entry[2]) < entry[1]:
+            if excess_robots:
+                entry[2].append(excess_robots.pop(0))
+            else:
+                print(f"Warning: Not enough robots available to fulfill requirements for {entry}.")
+                break
+
+    return data
+
+def give_new_position(data, name):
+    data = calculate_moving(data)
+    supplier = ""
+    storage = ""
+
+    for entry in data:
+        if name in entry[2]:
+            if 'supplier' in entry[0]:
+                supplier = entry[0]
+                supplier_number = entry[0].split('_')[1]
+                storage = f"storage_{supplier_number}"
+            elif 'storage' in entry[0]:
+                storage = entry[0]
+                supplier = ""
+
+    return supplier, storage
+
+#####################################
+
+def on_message_reconfig_timer(client, userdata, msg):
+    global current_supplier, current_storage, reconfig_data, register_flag
+
+    message = msg.payload.decode("utf-8").strip().lower()
+    if message == '0':
+        current_supplier, current_Storage = give_new_position(reconfig_data.copy(), NAME)
+        logger.info(f"Neue Positionen: {current_supplier}, {current_Storage}")
+
+        if current_Storage != lastRegisteredStorage or current_supplier != lastRegisteredSupplier:
+            register_flag = "false"
+
+def on_message_reconfig_data(client, userdata, msg):
+    global reconfig_data
+    try:
+        data = json.loads(msg.payload.decode("utf-8"))
+
+        name = data.get("name")
+        count_robots = data.get("count_robots", 0)
+        registered_robots = data.get("registered_robots", 0)
+        fullness = data.get("fullness", 0)
+
+        #logger.info(f"Reconfig-Daten empfangen: {data}")
+
+        if name:
+            # Überprüfen, ob es bereits einen Eintrag mit dem Namen gibt
+            for entry in reconfig_data:
+                if entry[0] == name:
+                    entry[1] = count_robots
+                    entry[2] = registered_robots
+                    entry[3] = fullness
+                    break
+            else:
+                reconfig_data.append([name, count_robots, registered_robots, fullness])
+            logger.info(f"Reconfig-Daten: {reconfig_data}")
+        else:
+            logger.error("Reconfig-Daten ohne Namen empfangen.")
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Decodieren der Reconfig-Daten-Nachricht: {e}")
+
+######################################################
 def main():
     """
     Main function to initialize the MQTT client and start the event loop.
@@ -283,6 +382,15 @@ def main():
     mqtt.subscribe(ROBOTER_REGISTER_CONFIRMATION_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_CONFIRMATION_TOPIC, on_registerConfirmationTopic)
     logger.info(f"{mqtt.name} subscribed to Tick-Topic: {ROBOTER_REGISTER_CONFIRMATION_TOPIC}")
+
+    # mqtt.subscribe(RECONFIG_TIMER_TOPIC)
+    # logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
+    # mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
+
+    mqtt.subscribe(RECONFIGURE_DATA)
+    logger.info(f"Subscribing to tick topic: {RECONFIGURE_DATA}")
+    mqtt.subscribe_with_callback(RECONFIGURE_DATA, on_message_reconfig_data)
+
 
     # Starte die MQTT-Schleife
     try:

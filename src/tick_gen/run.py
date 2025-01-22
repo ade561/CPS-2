@@ -8,7 +8,7 @@ from mqtt.mqtt_wrapper import MQTTWrapper
 
 
 TICK_TOPIC = "tickgen/tick"
-REKONFIG_TIMER_TOPIC = "rekonfig/time"
+RECONFIG_TIMER_TOPIC = "reconfig/time"
 SPEEDFACTOR_TOPIC = "tickgen/speed_factor"
 interval_sec = 30
 speed_factor = 10
@@ -46,16 +46,18 @@ def main():
             ts_iso = ts.isoformat()
 
             mqtt.publish(TICK_TOPIC, ts_iso)
-            #mqtt.publish("Test", json.dumps())
             tick_sec = tick_sec + 30
             time.sleep(interval_sec * (1.0 / speed_factor))
 
             global reconfig_counter
             reconfig_counter -= 1
-            if reconfig_counter <= 0:
-                mqtt.publish(REKONFIG_TIMER_TOPIC, json.dumps(reconfig_counter))
-                logger.info(f"Reconfig Counter abgelaufen. True auf {REKONFIG_TIMER_TOPIC} veröffentlicht.")
-                reconfig_counter = 20
+            if reconfig_counter == 0:
+                mqtt.publish(RECONFIG_TIMER_TOPIC, json.dumps(0))
+                logger.info(f"Reconfig Counter abgelaufen. 0 auf {RECONFIG_TIMER_TOPIC} veröffentlicht.")
+                reconfig_counter = 5
+            elif reconfig_counter == 1:
+                mqtt.publish(RECONFIG_TIMER_TOPIC, json.dumps(1))
+                logger.info(f"Reconfig Counter abgelaufen. 1 auf {RECONFIG_TIMER_TOPIC} veröffentlicht.")
                 
 
     except(KeyboardInterrupt, SystemExit):

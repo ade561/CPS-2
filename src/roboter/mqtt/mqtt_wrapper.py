@@ -42,6 +42,10 @@ class MQTTWrapper:
         self.log.debug('subscribe to  ' + topic)
         self.client.subscribe(topic)
 
+    def unsubscribe(self, topic):
+        self.log.debug('unsubscribe to  ' + topic)
+        self.client.unsubscribe(topic)
+
     def subscribe_with_callback(self, sub, callback):
         self.client.message_callback_add(sub, callback)
 
