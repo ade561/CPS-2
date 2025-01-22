@@ -42,6 +42,7 @@ robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "chargin
 cfp_flag = False
 adaptive_mode = True
 current_tick = None
+robot_status_topics = []  
 
 
 def on_robot_status(client, userdata, msg):
@@ -209,6 +210,12 @@ def on_message_tick(client, userdata, msg):
     current_tick = ts_iso
     #logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
+
+    if robot_status_topics:
+        for topic in robot_status_topics:
+            client.message_callback_add(topic, on_robot_status)
+
+    
     data = {
         "package_type_1": supplier_package_type_1,
         "package_type_2": supplier_package_type_2,
@@ -297,6 +304,11 @@ def on_registration(client, userdata, msg):
             robot_statuses[robot_id] = robot_status
             logger.info(f"Roboter {robot_id} erfolgreich registriert.")
             logger.info(f"Aktuelle registrierte Roboter: {registrated_robots} : Laenge= {len(registrated_robots)}")
+
+            robot_status_topic = f"roboter/{robot_id}/status"
+            client.subscribe(robot_status_topic)
+            robot_status_topics.append(robot_status_topic)
+            logger.info(f"Subscribed to Robot status Topic: {robot_status_topic}")
 
 
     except json.JSONDecodeError as e:
