@@ -24,6 +24,11 @@ TICK_TOPIC = "tickgen/tick"
 REKONFIG_TIMER_TOPIC = "rekonfig/time"
 RECONFIGURE_TOPIC = NAME + "/reconfigure"
 
+CFP_TOPIC = os.environ.get('CFP_TOPIC')  # Call-for-Proposals-Thema
+ROBOTER_PROPOSAL_TOPIC = 'roboter/+/proposal' # Proposals-Thema
+AWARD_TOPIC = os.environ.get('AWARD_TOPIC')  # Thema für Gewinner
+
+
 mqtt = None
 storage_package_type_1 = 0
 storage_package_type_2 = 0
