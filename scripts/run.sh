@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
  
 # Anzahl der Elemente definieren
-NUM_STORAGES=2
-NUM_SUPPLIERS=2
+NUM_STORAGES=1
+NUM_SUPPLIERS=1
 NUM_ROBOTS=4
  
 # Netzwerk erstellen
