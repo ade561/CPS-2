@@ -41,6 +41,8 @@ reconfig_data = []  # Reconfig-Daten als Feld
 charging_tick_counter = 0
 process_tick_counter = 0
 adaptiveMode = False
+
+proposal = []
 # Logging-Konfiguration
 logging.basicConfig(
     level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -176,7 +178,7 @@ def send_proposal(client, package_type,quantity):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
-    global roboter_battery, transport_type
+    global roboter_battery, transport_type, proposal
 
     transmission_type = transport_type[0 if random.random() < 0.35 else 1]
 
@@ -231,6 +233,7 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
             "timestamp": package_timestamp,
             "quantity": quantity
         }
+        client.publish(NAME +"/analyse",json.dumps(proposal))
         client.publish(PROCESSED_TOPIC, json.dumps(confirmation))  # Nachricht senden
         logger.info(f"Bestätigung gesendet: {confirmation}")
         roboter_battery = max(0,roboter_battery-battery_cost)
