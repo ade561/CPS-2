@@ -47,7 +47,7 @@ robot_status_topics = []
 
 cfp_flag = False
 current_tick = None
-adaptive_mode = True
+adaptive_mode = False
 registrated_robots = []  # Ändern von Set zu Liste
 removing_registrated_robots = []
 storage_size = 300

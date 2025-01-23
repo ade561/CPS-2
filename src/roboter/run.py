@@ -40,6 +40,7 @@ current_supplier = "supplier/1"
 reconfig_data = []  # Reconfig-Daten als Feld
 charging_tick_counter = 0
 process_tick_counter = 0
+adaptiveMode = False
 # Logging-Konfiguration
 logging.basicConfig(
     level=logging.INFO,  # Log-Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -322,7 +323,7 @@ def on_message_reconfig_timer(client, userdata, msg):
 
     message = msg.payload.decode("utf-8").strip().lower()
 
-    if message == '0':
+    if message == '0' and adaptiveMode == True:
         current_supplier, current_Storage = give_new_position(reconfig_data.copy(), NAME)
         logger.info(f"Neue Positionen: {current_supplier}, {current_Storage}")
 
