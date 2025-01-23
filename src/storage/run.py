@@ -82,7 +82,6 @@ def on_message_tick(client, userdata, msg):
         "timestamp": ts_iso
     }
     client.publish(DATA_TOPIC, json.dumps(data))
-    logger.info(f"Bestand veröffentlicht (vor Verarbeitung): {data}")
     logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
     if adaptive_mode == True:
@@ -148,14 +147,16 @@ def on_package_output(client, userdata, msg):
         logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
 
         package_type = processed_data.get("package_type")
-        storage_name = processed_data.get("strorage")
+        storage_name = processed_data.get("storage")
         quantity = processed_data.get("quantity")
         if storage_name == NAME:
             if package_type == 1 and storage_package_type_1 > 0:
+                logger.info(f"OUTPUT: PACKAGE_TYPE_1:")
                 storage_package_type_1 = max(0,storage_package_type_1-quantity)
             elif package_type == 2 and storage_package_type_1 > 0:
+                logger.info(f"OUTPUT: PACKAGE_TYPE_2:")
                 storage_package_type_2 = max(0,storage_package_type_2-quantity)
-            logger.info(f"Lagerbestand aktualisiert: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
+            logger.info(f"OUTPUT: Lagerbestand aktualisiert: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
 
@@ -164,10 +165,8 @@ def on_processed_message(client, userdata, msg):
     supplier = process_data.get("supplier")
     logger.info(f"PROCESS_MSG: {process_data}")
     if supplier == "" or supplier == None:
-        logger.info(f"AMK OUTPUT")
         on_package_output(client, userdata, msg)
     else:
-        logger.info(f"AMK INPUT")
         on_package_input(client, userdata, msg)
 
 def on_registration(client, userdata, msg):
