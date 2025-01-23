@@ -262,8 +262,8 @@ def on_registration(client, userdata, msg):
         target_supplier = register_data.get("supplier")
 
         if target_supplier == NAME:
-            if target_supplier not in register_data:
-                registrated_robots.append(target_supplier)
+            if robot_id not in registrated_robots:
+                registrated_robots.append(robot_id)
                 robot_statuses[robot_id] = robot_status
 
                 confirmation = {
@@ -350,9 +350,9 @@ def main():
     logger.info(f"Subscribing to tick topic: {ROBOT_STATUS_TOPIC}")
     mqtt.subscribe_with_callback(ROBOT_STATUS_TOPIC, on_robot_status)
 
-    # mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
-    # mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)
-    # logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
+    mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
+    mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode_message)
+    logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
 
     try:
         logger.info("Starting MQTT loop...")

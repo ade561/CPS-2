@@ -155,14 +155,14 @@ def on_registration(client, userdata, msg):
     target_storage = register_data.get("storage")
 
     if target_storage == NAME:
-            if target_storage not in register_data:
+            if robot_id not in registrated_robots:
                 registrated_robots.append(robot_id)
                 robot_statuses[robot_id] = robot_status
 
                 confirmation = {
                 "name": robot_id,
                 "status": "registered",
-                "supplier": NAME
+                "supplier": target_supplier
                 }
 
             if target_storage not in removing_registrated_robots and target_supplier == "":
@@ -170,7 +170,7 @@ def on_registration(client, userdata, msg):
                 confirmation = {
                 "name": robot_id,
                 "status": "registered",
-                "supplier": NAME
+                "supplier": target_supplier
                 }
 
             confirmation_topic = f"roboter/{robot_id}/registerConfirmation"

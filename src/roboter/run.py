@@ -23,7 +23,7 @@ AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
 PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
 
 RECONFIG_TIMER_TOPIC = "reconfig/time"
-RECONFIGURE_DATA = "+/+/reconfigure"
+RECONFIGURE_DATA = "+/+/reconfig"
 
 # Variablen
 lastRegisteredSupplier = ""
@@ -51,7 +51,7 @@ logging.basicConfig(
 logger = logging.getLogger(NAME)
 
 def register_robot(client):
-    global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier,supplier_cfp_topic,storage_cfp_topic
+    global roboter_status,current_supplier,current_storage,lastRegisteredStorage,lastRegisteredSupplier
 
     logger.info(f"CURRENT SUPPLIER: {current_supplier}, CURRENT STORAGE: {current_storage}")
     if current_supplier == lastRegisteredSupplier and current_storage == lastRegisteredStorage:
@@ -137,7 +137,6 @@ def on_award_message(client, userdata, msg):
 def on_tick_message(client, userdata, msg):
     global last_cfp_data, roboter_battery,charging_tick_counter,roboter_status,process_tick_counter
 
-
     if register_flag == False:
         register_robot(client)
 
@@ -145,8 +144,6 @@ def on_tick_message(client, userdata, msg):
     data = {"battery": roboter_battery,}
     client.publish(DATA_TOPIC, json.dumps(data))
     
-
-
     if roboter_battery < 20:
         if charging_tick_counter  >= 0:
             logger.info(f"{NAME} Akku ist zu niedrig ({roboter_battery}%). Lade Akku auf.")
@@ -257,7 +254,7 @@ def relativ_fullness(data, total_fullness):
     return data
 
 def sort_reconfig_data(data):
-    data.sort(key=lambda x: (x[0].split('_')[0].lower(), int(x[0].split('_')[1])))
+    data.sort(key=lambda x: (x[0].split('/')[0].lower(), int(x[0].split('/')[1])))
     return data
 
 def calculate_robots(data):
@@ -307,7 +304,7 @@ def give_new_position(data, name):
         if name in entry[2]:
             if 'supplier' in entry[0]:
                 supplier = entry[0]
-                supplier_number = entry[0].split('_')[1]
+                supplier_number = entry[0].split('/')[1]
                 storage = f"storage_{supplier_number}"
             elif 'storage' in entry[0]:
                 storage = entry[0]
@@ -321,17 +318,20 @@ def on_message_reconfig_timer(client, userdata, msg):
     global current_supplier, current_storage, reconfig_data, register_flag
 
     message = msg.payload.decode("utf-8").strip().lower()
+
     if message == '0':
         current_supplier, current_Storage = give_new_position(reconfig_data.copy(), NAME)
         logger.info(f"Neue Positionen: {current_supplier}, {current_Storage}")
 
         if current_Storage != lastRegisteredStorage or current_supplier != lastRegisteredSupplier:
-            register_flag = "false"
+            register_flag = False
 
 def on_message_reconfig_data(client, userdata, msg):
     global reconfig_data
     try:
         data = json.loads(msg.payload.decode("utf-8"))
+
+        logger.info(f"message_reconfig{data}")
 
         name = data.get("name")
         count_robots = data.get("count_robots", 0)
@@ -383,9 +383,9 @@ def main():
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_CONFIRMATION_TOPIC, on_registerConfirmationTopic)
     logger.info(f"{mqtt.name} subscribed to Tick-Topic: {ROBOTER_REGISTER_CONFIRMATION_TOPIC}")
 
-    # mqtt.subscribe(RECONFIG_TIMER_TOPIC)
-    # logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
-    # mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
+    mqtt.subscribe(RECONFIG_TIMER_TOPIC)
+    logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
+    mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
 
     mqtt.subscribe(RECONFIGURE_DATA)
     logger.info(f"Subscribing to tick topic: {RECONFIGURE_DATA}")
