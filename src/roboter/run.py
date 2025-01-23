@@ -250,7 +250,7 @@ def process_package(client, package_type, battery_cost, package_time, package_ti
 
 ####Neues Position berechnen ########
 def sum_robots(data):
-    return sum(item[1] for item in data if 'storage' in item[0])
+    return sum(item[1] for item in data)
 
 def sum_fullness(data):
     return sum(item[3] for item in data)
@@ -322,13 +322,15 @@ def give_new_position(data, name):
 #####################################
 
 def on_message_reconfig_timer(client, userdata, msg):
-    global current_supplier, current_storage, reconfig_data, register_flag
-
+    global current_supplier, current_storage, reconfig_data, register_flag, lastRegisteredStorage, lastRegisteredSupplier
     message = msg.payload.decode("utf-8").strip().lower()
+
+    logger.info(f"on_message_reconfig_timer: {message}")
 
     if message == '0' and adaptiveMode == True:
         current_supplier, current_Storage = give_new_position(reconfig_data.copy(), NAME)
         logger.info(f"Neue Positionen: {current_supplier}, {current_Storage}")
+        logger.info(f"Alte Positionen: {lastRegisteredSupplier}, {lastRegisteredStorage}")
 
         if current_Storage != lastRegisteredStorage or current_supplier != lastRegisteredSupplier:
             register_flag = False

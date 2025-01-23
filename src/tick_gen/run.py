@@ -12,7 +12,7 @@ RECONFIG_TIMER_TOPIC = "reconfig/time"
 SPEEDFACTOR_TOPIC = "tickgen/speed_factor"
 interval_sec = 30
 speed_factor = 10
-reconfig_counter = 20
+reconfig_counter = 4
 
 logging.basicConfig(
     level=logging.INFO,

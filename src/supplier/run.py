@@ -210,6 +210,24 @@ def on_message_tick(client, userdata, msg):
         "timestamp": ts_iso
     }
     client.publish(DATA_TOPIC, json.dumps(data))
+    
+    if supplier_package_type_1 <= 0:
+            if tick_counter_A >= 10:
+                tick_counter_A = 0
+                supplier_package_type_1 = 100
+                logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
+            else:
+                logger.info(f"Pakete auf dem Weg")
+                tick_counter_A += 1
+
+    if supplier_package_type_2 <= 0:
+            if tick_counter_B >= 10:
+                tick_counter_B = 0
+                supplier_package_type_2 = 100
+                logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
+            else:
+                logger.info(f"Pakete auf dem Weg")
+                tick_counter_B += 1
 
     if not registrated_robots:
         logger.info("Keine Roboter Roboter haben sich registriert. CfPs werden nicht gesendet.")
@@ -219,22 +237,6 @@ def on_message_tick(client, userdata, msg):
     if not any(status == "ready" for status in robot_statuses.values()):
         logger.info("Keine verfügbaren Roboter. CfPs werden nicht gesendet.")
         return
-    
-    if supplier_package_type_1 <= 0:
-            if tick_counter_A >= 10:
-                tick_counter_A = 0
-                supplier_package_type_1 = 100
-                logger.info(f"Supplier hat neue Pakete vom Typ 1 geliefert!")
-            else:
-                tick_counter_A += 1
-
-    if supplier_package_type_2 <= 0:
-            if tick_counter_B >= 10:
-                tick_counter_B = 0
-                supplier_package_type_2 = 100
-                logger.info(f"Supplier hat neue Pakete vom Typ 2 geliefert!")
-            else:
-                tick_counter_B += 1
 
     if cfp_flag != True:
         if supplier_package_type_1 > 0 and supplier_package_type_2 <= 0:

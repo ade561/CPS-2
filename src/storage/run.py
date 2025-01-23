@@ -179,24 +179,19 @@ def on_registration(client, userdata, msg):
     target_supplier = register_data.get("supplier")
     target_storage = register_data.get("storage")
 
-    if target_storage == NAME:
+    if target_storage == NAME and target_supplier == "":
             if robot_id not in registrated_robots:
                 registrated_robots.append(robot_id)
 
-                confirmation = {
-                "name": robot_id,
-                "status": "registered",
-                "supplier": target_supplier
-                }
-
-            if target_storage not in removing_registrated_robots and target_supplier == "":
+            if robot_id not in removing_registrated_robots and target_supplier == "":
                 removing_registrated_robots.append(robot_id)
                 robot_statuses[robot_id] = robot_status
-                confirmation = {
-                "name": robot_id,
-                "status": "registered",
-                "supplier": target_supplier
-                }
+
+            confirmation = {
+            "name": robot_id,
+            "status": "registered",
+            "supplier": target_supplier
+            }
 
             confirmation_topic = f"roboter/{robot_id}/registerConfirmation"
             client.publish(confirmation_topic, json.dumps(confirmation))
@@ -249,8 +244,8 @@ def on_message_reconfig_timer(client, userdata, msg):
         
         data = {
         "name": NAME,
-        "count_robots": len(registrated_robots),
-        "registered_robots": registrated_robots,
+        "count_robots": len(removing_registrated_robots),
+        "registered_robots": removing_registrated_robots,
         "fullness": ((storage_package_type_1) + (storage_package_type_2)) / 200,
         }
 
