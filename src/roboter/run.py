@@ -19,7 +19,7 @@ ROBOT_REGISTER_TOPIC = os.environ.get('ROBOTER_REGISTER_TOPIC')
 ROBOTER_REGISTER_CONFIRMATION_TOPIC = os.environ.get('ROBOTER_REGISTER_CONFIRMATION_TOPIC')
 ROBOT_STATUS_TOPIC = os.environ.get('ROBOT_STATUS_TOPIC')
 
-AWARD_TOPIC = "supplier/+/award"  # Thema für Gewinner
+AWARD_TOPIC = "+/+/award"  # Thema für Gewinner
 PROCESSED_TOPIC = os.environ.get('PROCESSED_TOPIC')
 
 RECONFIG_TIMER_TOPIC = "reconfig/time"
@@ -166,11 +166,12 @@ def on_tick_message(client, userdata, msg):
             logger.info(f"{NAME} ist bereit.")
             return
 
-    if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":  # Nur wenn CfP-Daten vorhanden und Roboter bereit
+    if current_cfp_data and current_cfp_data != last_cfp_data and roboter_status == "ready":
         package_type = current_cfp_data.get("package_type")
-        send_proposal(client, package_type)
+        quantity = current_cfp_data.get("quantity")
+        send_proposal(client, package_type,quantity)
 
-def send_proposal(client, package_type):
+def send_proposal(client, package_type,quantity):
     """
     Sendet ein Proposal basierend auf den CfP-Daten.
     """
@@ -186,7 +187,8 @@ def send_proposal(client, package_type):
             "transport_type": 2,
             "battery": roboter_battery,
             "battery_cost": random.randint(8, 10),
-            "estimated_time": random.randint(1, 2)
+            "estimated_time": random.randint(1, 2),
+            "quantity": quantity
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
         #logger.info(f"Proposal gesendet: {proposal}")
@@ -198,7 +200,8 @@ def send_proposal(client, package_type):
             "transport_type": 1,
             "battery": roboter_battery,
             "battery_cost": random.randint(4, 8),
-            "estimated_time": random.randint(3, 4)
+            "estimated_time": random.randint(3, 4),
+            "quantity": quantity
         }
         client.publish(ROBOT_PROPOSAL_TOPIC, json.dumps(proposal))  # Proposal senden
 

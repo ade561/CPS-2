@@ -104,8 +104,8 @@ def on_message_proposals(client, userdata, msg):
             proposal.get("battery"),
             proposal.get("battery_cost") ,
             proposal.get("estimated_time"),
-            proposal.get("package_type")
-
+            proposal.get("package_type"),
+            proposal.get("quantity")
             )
 
         # Proposal zum Set hinzufügen

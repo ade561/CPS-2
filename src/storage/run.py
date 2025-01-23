@@ -39,6 +39,7 @@ storage_package_type_2 = 0
 
 storage_package_type_1_entries = []
 storage_package_type_2_entries = []
+package_entries = []
 
 proposals = set()  # Liste der empfangenen Angebote
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
@@ -69,7 +70,7 @@ def on_adaptive_mode(client, userdata, msg):
 def on_message_tick(client, userdata, msg):
     global cfp_flag
     ts_iso = msg.payload.decode("utf-8")
-
+    package_entries = storage_package_type_1_entries + storage_package_type_2_entries
     logging.info(f"Alle: {registrated_robots}")
     logging.info(f"Auslieferer: {removing_registrated_robots}")
     ## PUBLISH DATA ##
@@ -85,11 +86,9 @@ def on_message_tick(client, userdata, msg):
     logger.info(f"Aktuelle Zustände der Roboter {robot_statuses}")
 
     if adaptive_mode == True:
-        storage_package_type_1_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
-        storage_package_type_2_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+        package_entries.sort(key=lambda x: (x[0] == 2, -x[3], x[1]))
+        logger.info(f"Sortierte Pakete: {package_entries}")
 
-        # logger.info(f"Aktualisierter Sorted-Entries: TYP 1: {storage_package_type_1_entries}")
-        # logger.info(f"Aktualisierter Sorted-Entries: TYP 2: {storage_package_type_2_entries}")
 
     if not registrated_robots:
         logger.info("Keine Roboter Roboter haben sich registriert. CfPs werden nicht gesendet.")
@@ -108,17 +107,11 @@ def on_message_tick(client, userdata, msg):
             random_package = 2
         else:
             random_package = 1 if random.random() < 0.5 else 2
-        if storage_package_type_1 > 0 and random_package == 1:
             cfp_flag = True
-            quantity_first_entry = storage_package_type_1_entries[0][3]
+            quantity_first_entry = package_entries[0][3]
             call_for_proposals(client, CFP_TOPIC, random_package, quantity_first_entry,ts_iso)
-        
-        elif storage_package_type_2 > 0 and random_package == 2:
-            cfp_flag = True
-            quantity_seconde_entry = storage_package_type_2_entries[0][3]
-            call_for_proposals(client, CFP_TOPIC, random_package, quantity_seconde_entry,ts_iso)
 
-def on_message_robot(client, userdata, msg):
+def on_package_input(client, userdata, msg):
     global storage_package_type_1, storage_package_type_2
     try: 
         processed_data = json.loads(msg.payload.decode("utf-8"))
@@ -144,6 +137,39 @@ def on_message_robot(client, userdata, msg):
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Nachricht: {e}")
 
+def on_package_output(client, userdata, msg):
+    """
+    Callback für Bearbeitungsbestätigungen von Robotern.
+    Reduziert den Lagerbestand.
+    """
+    global storage_package_type_1, storage_package_type_2
+    try:
+        processed_data = json.loads(msg.payload.decode("utf-8"))
+        logger.info(f"Bearbeitungsbestätigung empfangen: {processed_data}")
+
+        package_type = processed_data.get("package_type")
+        storage_name = processed_data.get("strorage")
+        quantity = processed_data.get("quantity")
+        if storage_name == NAME:
+            if package_type == 1 and storage_package_type_1 > 0:
+                storage_package_type_1 = max(0,storage_package_type_1-quantity)
+            elif package_type == 2 and storage_package_type_1 > 0:
+                storage_package_type_2 = max(0,storage_package_type_2-quantity)
+            logger.info(f"Lagerbestand aktualisiert: Typ 1: {storage_package_type_1}, Typ 2: {storage_package_type_2}")
+    except Exception as e:
+        logger.error(f"Fehler beim Verarbeiten der Bestätigungsnachricht: {e}")
+
+def on_processed_message(client, userdata, msg):
+    process_data = json.loads(msg.payload.decode("utf-8"))
+    supplier = process_data.get("supplier")
+    logger.info(f"PROCESS_MSG: {process_data}")
+    if supplier == "" or supplier == None:
+        logger.info(f"AMK OUTPUT")
+        on_package_output(client, userdata, msg)
+    else:
+        logger.info(f"AMK INPUT")
+        on_package_input(client, userdata, msg)
+
 def on_registration(client, userdata, msg):
     global registrated_robots, removing_registrated_robots, NAME
     register_data = json.loads(msg.payload.decode("utf-8"))
@@ -157,7 +183,6 @@ def on_registration(client, userdata, msg):
     if target_storage == NAME:
             if robot_id not in registrated_robots:
                 registrated_robots.append(robot_id)
-                robot_statuses[robot_id] = robot_status
 
                 confirmation = {
                 "name": robot_id,
@@ -167,6 +192,7 @@ def on_registration(client, userdata, msg):
 
             if target_storage not in removing_registrated_robots and target_supplier == "":
                 removing_registrated_robots.append(robot_id)
+                robot_statuses[robot_id] = robot_status
                 confirmation = {
                 "name": robot_id,
                 "status": "registered",
@@ -183,7 +209,6 @@ def on_registration(client, userdata, msg):
             removing_registrated_robots.remove(robot_id)
         if robot_id in robot_statuses:
             robot_statuses.pop(robot_id)
-
 
 def call_for_proposals(client, cfp_topic, package_type, quantity,timestamp):
     global cfp_flag
@@ -212,9 +237,8 @@ def on_robot_status(client, userdata, msg):
         robot_name = status_data.get("name")
         status = status_data.get("status")
 
-        if robot_name in registrated_robots:
-            if robot_name and status:
-                robot_statuses[robot_name] = status
+        if robot_name in removing_registrated_robots:
+            robot_statuses[robot_name] = status
     except json.JSONDecodeError as e:
         logger.error(f"Fehler beim Decodieren der Ladezustandsnachricht: {e}")
 
@@ -234,39 +258,126 @@ def on_message_reconfig_timer(client, userdata, msg):
         client.publish(RECONFIG_DATA_TOPIC, json.dumps(data))
         logger.info(f"Reconfig-Daten veröffentlicht: {data}")
 
+def on_message_proposals(client, userdata, msg):
+    global proposals,adaptive_mode
+
+    try:
+        # Proposal empfangen
+        proposal = json.loads(msg.payload.decode("utf-8"))
+
+        if proposal.get("place") != NAME:
+            return
+        if proposal.get("name") in {p[0] for p in proposals}:
+            return
+
+        logger.info(f"Proposal empfangen: {proposal}")
+
+        # Erstelle ein Tupel aus den Proposal-Daten
+        proposal_tuple = (
+            proposal.get("name"),
+            proposal.get("transport_type"),
+            proposal.get("battery"),
+            proposal.get("battery_cost") ,
+            proposal.get("estimated_time"),
+            proposal.get("package_type"),
+            proposal.get("quantity")
+            )
+
+        # Proposal zum Set hinzufügen
+        if proposal_tuple not in proposals:
+            proposals.add(proposal_tuple)
+
+        # Weiterverarbeitung, wenn genügend Proposals empfangen wurden
+        ready_robots_count = sum(1 for status in robot_statuses.values() if status == "ready")
+        if (adaptive_mode == True and len(proposals) >= ready_robots_count) or (adaptive_mode == False and len(proposals) > 0):
+            logger.info(f"Proposals : {proposals} : ADAPTIVE={adaptive_mode}")
+            package_type = proposal.get("package_type")
+            quantity = proposal.get("quantity")
+            select_winner_and_award(client, package_type,quantity)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Fehler beim Decodieren des Proposals: {e}")
+    except Exception as e:
+        logger.error(f"Ein unerwarteter Fehler in on_message_proposals: {e}")
+
+def select_winner_and_award(client,package_type,quantity):
+    global proposals,cfp_flag,current_tick
+
+    if not proposals:
+        logger.info("Keine Proposals empfangen. Kein Award vergeben.")
+        return
+
+    # Gewinner mit dem höchsten Score auswählen
+    winner = max(proposals, key=calculate_score)
+
+    award_message = {
+        "winner": winner[0],          # Name
+        "transport_type": winner[1],  # Versandtyp
+        "battery": winner[2],         # Batterie
+        "battery_cost": winner[3],    # Batteriekosten
+        "estimated_time": winner[4],   # Bearbeitungszeit
+        "package_type": package_type,
+        "timestamp": current_tick,     # Zeitstempel
+        "quantity": quantity
+    }
+    client.publish(AWARD_TOPIC, json.dumps(award_message))
+    logger.info(f"Award vergeben an: {award_message}\n")
+    cfp_flag = False
+    # Leere das Set der Proposals nach der Vergabe
+    proposals.clear()
+
+def calculate_score(proposal):
+    """
+    Berechnet den Score für ein Proposal basierend auf gewichteten Kriterien.
+    Ein höherer Score bedeutet ein besseres Proposal.
+    """
+    # Gewichtungen
+    transport_weight = 0.45 if proposal[1] == "express" else 0.2      
+    battery_cost_weight = 0.3    
+    estimated_time_weight = 0.25  
+
+    # Berechnung des Scores (alle positiv gewichtet)
+    transport_score = transport_weight * int(proposal[1])  # Höherer Transporttyp = besser
+    battery_cost_score = -battery_cost_weight * proposal[3] # Niedrigere Kosten = besser
+    estimated_time_score = -estimated_time_weight * proposal[4]  # Kürzere Zeit = besser
+
+    # Gesamtscore
+    score = (
+        transport_score +
+        battery_cost_score +
+        estimated_time_score
+    )
+    
+    return abs(score)
+
 def main():
     mqtt = MQTTWrapper('mqttbroker', 1883, name=NAME)
     mqtt.subscribe(TICK_TOPIC)
     mqtt.subscribe_with_callback(TICK_TOPIC, on_message_tick)
 
-    mqtt.subscribe(PROCESSED_TOPIC)
-    mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_message_robot)
-
-    mqtt.subscribe(RECONFIG_TIMER_TOPIC)
-    logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
-    mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
-
-    # mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
-    # mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode)
-    # logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
-
     mqtt.subscribe(ROBOTER_REGISTER_TOPIC)
     mqtt.subscribe_with_callback(ROBOTER_REGISTER_TOPIC,on_registration)
     logger.info(f"{mqtt.name} subscribed to Robot register Topic: {ROBOTER_REGISTER_TOPIC}")
 
-    # mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
-    # mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
-    # logger.info(f"{mqtt.name} subscribed to Robot proposal Topic: {ROBOTER_PROPOSAL_TOPIC}")
+    mqtt.subscribe(ROBOTER_PROPOSAL_TOPIC)
+    mqtt.subscribe_with_callback(ROBOTER_PROPOSAL_TOPIC, on_message_proposals)
+    logger.info(f"{mqtt.name} subscribed to Robot proposal Topic: {ROBOTER_PROPOSAL_TOPIC}")
 
-    # mqtt.subscribe(PROCESSED_TOPIC)
-    # mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
-    # logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
+    mqtt.subscribe(PROCESSED_TOPIC)
+    mqtt.subscribe_with_callback(PROCESSED_TOPIC, on_processed_message)
+    logger.info(f"{mqtt.name} subscribed to Robot processed Topic: {PROCESSED_TOPIC}")
+
+    mqtt.subscribe(RECONFIG_TIMER_TOPIC)
+    logger.info(f"Subscribing to tick topic: {RECONFIG_TIMER_TOPIC}")
+    mqtt.subscribe_with_callback(RECONFIG_TIMER_TOPIC, on_message_reconfig_timer)
     
-
     mqtt.subscribe(ROBOT_STATUS_DATA)
     logger.info(f"Subscribing to tick topic: {ROBOT_STATUS_DATA}")
     mqtt.subscribe_with_callback(ROBOT_STATUS_DATA, on_robot_status)
 
+    mqtt.subscribe(ADAPTIVE_MODE_TOPIC)
+    mqtt.subscribe_with_callback(ADAPTIVE_MODE_TOPIC, on_adaptive_mode)
+    logger.info(f"{mqtt.name} subscribed to Adaptive Mode Topic: {ADAPTIVE_MODE_TOPIC}")
     try:
         logger.info("Starting MQTT loop...")
         mqtt.loop_forever()
