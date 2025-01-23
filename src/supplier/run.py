@@ -44,11 +44,11 @@ proposals = set()  # Liste der empfangenen Angebote
 registrated_robots = []
 robot_statuses = {}  # Dictionary, z.B. {"robot_1": "ready", "robot_2": "charging"}
 cfp_flag = False
-adaptive_mode = False
+adaptive_mode = True
 current_tick = None
 robot_status_topics = []
 random_quantity = 0;  
-
+proposal = []
 registred_flag = False
 
 def on_robot_status(client, userdata, msg):

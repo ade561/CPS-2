@@ -40,7 +40,7 @@ current_supplier = "supplier/1"
 reconfig_data = []  # Reconfig-Daten als Feld
 charging_tick_counter = 0
 process_tick_counter = 0
-adaptiveMode = False
+adaptiveMode = True
 
 proposal = []
 # Logging-Konfiguration
